@@ -4,6 +4,7 @@ import 'package:native_toolchain_c/native_toolchain_c.dart';
 void main(List<String> args) async {
   await build(args, (input, output) async {
     final packageName = input.packageName;
+    
     final cBuilder = CBuilder.library(
       name: packageName,
       assetName: '$packageName.dart',
@@ -33,10 +34,18 @@ void main(List<String> args) async {
         'macos/src/stockfish/nnue/network.cpp',
         'macos/src/stockfish/nnue/features/half_ka_v2_hm.cpp',
       ],
-      flags: ['-std=c++17'],
+      flags: [
+        '-std=c++17',
+        '-pthread',
+        '-fexceptions',
+      ],
       defines: {
-        'NNUE_EMBEDDING_OFF': '',  // Disable embedding, load at runtime
+        'NNUE_EMBEDDING_OFF': '',
       },
+      buildMode: BuildMode.debug,
+      buildModeDefine: false,
+      ndebugDefine: false,
+      optimizationLevel: OptimizationLevel.o0,
     );
     await cBuilder.run(input: input, output: output);
   });
