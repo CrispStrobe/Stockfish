@@ -66,58 +66,120 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
         }
     }
 
+    void _showGameOverDialog() {
+        showDialog(
+            context: context,
+            barrierDismissible: false, // User must click a button
+            builder: (BuildContext context) {
+            final winner = _game.winner;
+            return AlertDialog(
+                title: Text(_game.gameOverReason),
+                content: Text(
+                winner != null 
+                    ? '$winner wins the game!' 
+                    : 'The game ended in a draw.',
+                ),
+                actions: [
+                TextButton(
+                    onPressed: () {
+                    Navigator.of(context).pop();
+                    _newGame();
+                    },
+                    child: const Text('New Game'),
+                ),
+                ],
+            );
+            },
+        );
+    }
+
   void _makeStockfishMove(String uciMove) {
-    if (uciMove.length < 4) return;
-    
-    final fromFile = uciMove[0].codeUnitAt(0) - 'a'.codeUnitAt(0);
-    final fromRank = 8 - int.parse(uciMove[1]);
-    final toFile = uciMove[2].codeUnitAt(0) - 'a'.codeUnitAt(0);
-    final toRank = 8 - int.parse(uciMove[3]);
+    if (_game.makeMove(uciMove)) {
+        setState(() {
+        // Replay the move on your visual board
+        final fromFile = uciMove[0].codeUnitAt(0) - 'a'.codeUnitAt(0);
+        final fromRank = 8 - int.parse(uciMove[1]);
+        final toFile = uciMove[2].codeUnitAt(0) - 'a'.codeUnitAt(0);
+        final toRank = 8 - int.parse(uciMove[3]);
 
-    setState(() {
-        if (uciMove.length == 5) {
-        // Handle Pawn Promotion (e.g., "e7e8q")
-        final promoChar = uciMove[4].toLowerCase();
-        PieceType type = PieceType.queen; // Default
-        if (promoChar == 'r') type = PieceType.rook;
-        else if (promoChar == 'b') type = PieceType.bishop;
-        else if (promoChar == 'n') type = PieceType.knight;
-
-        _boardState.board[fromRank][fromFile] = null;
-        _boardState.board[toRank][toFile] = ChessPiece(type, PieceColor.black);
-        _boardState.whiteToMove = true; 
-        } else {
         _boardState.makeMove(fromRank, fromFile, toRank, toFile);
+        
+        // Handle visual promotion if move string has 5 chars (e.g. e7e8q)
+        if (uciMove.length == 5) {
+            _boardState.board[toRank][toFile] = ChessPiece(PieceType.queen, PieceColor.black);
         }
 
-        _game.makeMove(uciMove);
         _lastMove = 'Stockfish: $uciMove';
-        _statusMessage = 'Your turn (White)';
+        _statusMessage = _game.isGameOver ? 'Game Over!' : 'Your turn (White)';
         _isThinking = false;
-    });
+        });
+    }
     }
 
   void _onMove(int fromRow, int fromCol, int toRow, int toCol) {
+    debugPrint('UI Drag: From($fromRow, $fromCol) To($toRow, $toCol)');
+    
+    if (!_boardState.whiteToMove || _isThinking) {
+      debugPrint('Move blocked: whiteToMove=${_boardState.whiteToMove}, isThinking=$_isThinking');
+      return;
+    }
+    
+    // 1. Prevent moving if it's not the user's turn or engine is busy
     if (!_boardState.whiteToMove || _isThinking) return;
 
+    // 2. Convert coordinates to UCI (e.g., 'e2e4')
     final uciMove = _boardState.squareToAlgebraic(fromRow, fromCol) +
                     _boardState.squareToAlgebraic(toRow, toCol);
 
-    setState(() {
-      _boardState.makeMove(fromRow, fromCol, toRow, toCol);
-      _game.makeMove(uciMove);
-      _lastMove = 'You: $uciMove';
-      _statusMessage = "Stockfish is thinking...";
-      _isThinking = true;
-    });
+    // 3. Attempt the move in the logic layer
+    bool isLegal = _game.makeMove(uciMove);
 
-    _requestStockfishMove();
-  }
+    if (isLegal) {
+        setState(() {
+        // Sync the visual board with the logic engine's FEN
+        // This ensures complex moves like castling/promotion are drawn correctly
+        _boardState.updateFromFen(_game.currentFEN);
+        
+        _lastMove = 'You: $uciMove';
+        
+        // Check if the game ended with this move
+        if (_game.isGameOver) {
+            _isThinking = false;
+            _statusMessage = 'Game Over: ${_game.gameOverReason}';
+            _showGameOverDialog();
+        } else {
+            // Move is legal and game continues: Start Stockfish
+            _statusMessage = "Stockfish is thinking...";
+            _isThinking = true;
+            _requestStockfishMove();
+        }
+        });
+    } else {
+        // 4. Handle Illegal Move attempt
+        ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: const Text('Illegal Move!'),
+            backgroundColor: Colors.red.shade700,
+            duration: const Duration(milliseconds: 700),
+        ),
+        );
+    }
+    }
 
   void _requestStockfishMove() {
     _stockfish.stdin = _game.positionCommand;
     _stockfish.stdin = 'go depth 10';
   }
+
+  void _checkGameOver() {
+    if (_game.isGameOver) {
+        setState(() {
+        _isThinking = false;
+        _statusMessage = 'Game Over: ${_game.gameOverReason}';
+        });
+        _showGameOverDialog();
+    }
+    }
 
   void _getHint() {
     if (_isThinking) return;

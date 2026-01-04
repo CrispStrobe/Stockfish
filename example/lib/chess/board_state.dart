@@ -29,6 +29,50 @@ class BoardState {
   BoardState() {
     _setupInitialPosition();
   }
+
+  void updateFromFen(String fen) {
+    // 1. Reset board
+    board = List.generate(8, (_) => List.filled(8, null));
+    
+    // 2. Parse FEN (e.g., "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+    final parts = fen.split(' ');
+    final rows = parts[0].split('/');
+    
+    for (int r = 0; r < 8; r++) {
+        int c = 0;
+        for (var char in rows[r].split('')) {
+        int? emptySquares = int.tryParse(char);
+        if (emptySquares != null) {
+            c += emptySquares;
+        } else {
+            final color = char == char.toUpperCase() ? PieceColor.white : PieceColor.black;
+            final type = _charToType(char.toLowerCase());
+            board[r][c] = ChessPiece(type, color);
+            c++;
+        }
+        }
+    }
+    whiteToMove = parts[1] == 'w';
+    }
+
+    PieceType _charToType(String char) {
+        switch (char) {
+            case 'p': 
+            return PieceType.pawn;
+            case 'n': 
+            return PieceType.knight;
+            case 'b': 
+            return PieceType.bishop;
+            case 'r': 
+            return PieceType.rook;
+            case 'q': 
+            return PieceType.queen;
+            case 'k': 
+            return PieceType.king;
+            default: 
+            return PieceType.pawn; // Fallback for safety
+        }
+        }
   
   void _setupInitialPosition() {
     // Pawns
