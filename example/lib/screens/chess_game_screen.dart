@@ -21,6 +21,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   bool _isThinking = false;
   String? _hintMove;
   String _lastMove = '';
+  bool _waitingForHint = false;
 
   @override
   void initState() {
@@ -32,24 +33,66 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   }
 
   void _initializeStockfish() {
-    // Listen to state changes to know when the engine is actually ready
-    _stockfish.state.addListener(_onStockfishStateChange);
+        // Listen to state changes to know when the engine is actually ready
+        _stockfish.state.addListener(_onStockfishStateChange);
 
-    _stockfish.stdout.listen((line) {
-        // Optimization: Clean up line and skip empty/noisy output
-        final trimmedLine = line.trim();
-        if (trimmedLine.isEmpty) return;
-        
-        debugPrint('Stockfish: $trimmedLine');
-        
-        if (trimmedLine.startsWith('bestmove')) {
-        final parts = trimmedLine.split(' ');
-        if (parts.length >= 2 && parts[1] != '(none)') {
-            _makeStockfishMove(parts[1]);
+        _stockfish.stdout.listen((line) {
+            // Optimization: Clean up line and skip empty/noisy output
+            final trimmedLine = line.trim();
+            if (trimmedLine.isEmpty) return;
+            
+            debugPrint('Stockfish: $trimmedLine');
+            
+            if (trimmedLine.startsWith('bestmove')) {
+            final parts = trimmedLine.split(' ');
+            if (parts.length >= 2 && parts[1] != '(none)') {
+            final move = parts[1];
+            
+            // Distinguish between a requested hint and a normal AI turn
+            if (_waitingForHint) {
+                _handleHintResponse(move); // Just shows the yellow squares
+            } else {
+                _makeStockfishMove(move); // Actually moves the black pieces
+            }
+            }
         }
-        }
+        });
+    }
+
+   
+    void _handleHintResponse(String uciMove) {
+    if (!mounted) return;
+
+    setState(() {
+        _waitingForHint = false; // Stop waiting
+        _isThinking = false;     // UNLOCK the board so user can move
+        _hintMove = uciMove;     // This triggers the yellow highlight in ChessBoard
+        _statusMessage = 'Hint: $uciMove';
     });
     }
+
+  void _applyHintMove(String uciMove) {
+    // 1. Validate and Logic Move
+    if (_game.makeMove(uciMove)) {
+      setState(() {
+        // 2. Update Visual Board
+        _boardState.updateFromFen(_game.currentFEN);
+        _lastMove = 'You (Hint): $uciMove';
+        _hintMove = null; // Clear highlight
+
+        // 3. Check Game Over or Continue
+        if (_game.isGameOver) {
+          _statusMessage = 'Game Over: ${_game.gameOverReason}';
+          _showGameOverDialog();
+        } else {
+          // 4. Hand over to Stockfish (Black)
+          _statusMessage = "Stockfish is thinking...";
+          _isThinking = true;
+          _requestStockfishMove();
+        }
+      });
+    }
+  }
 
     void _onStockfishStateChange() {
         debugPrint('Stockfish state: ${_stockfish.state.value}');
@@ -141,6 +184,9 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
         _boardState.updateFromFen(_game.currentFEN);
         
         _lastMove = 'You: $uciMove';
+
+        // Clear the hint highlight now that a move was made
+        _hintMove = null;
         
         // Check if the game ended with this move
         if (_game.isGameOver) {
@@ -182,26 +228,18 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
     }
 
   void _getHint() {
-    if (_isThinking) return;
-    
+    // Block hint if it's not the human's turn or engine is busy
+    if (!_boardState.whiteToMove || _isThinking) return;
+
     setState(() {
-      _statusMessage = 'Getting hint...';
+      _waitingForHint = true;
+      _isThinking = true; // Show spinner while calculating
+      _statusMessage = 'Analyzing position...';
     });
-    
-    _stockfish.stdout.listen((line) {
-      if (line.startsWith('bestmove')) {
-        final parts = line.split(' ');
-        if (parts.length >= 2) {
-          setState(() {
-            _hintMove = parts[1];
-            _statusMessage = 'Hint: $_hintMove - Your turn (White)';
-          });
-        }
-      }
-    });
-    
+
+    // Ask Stockfish for the best move (lower depth is faster)
     _stockfish.stdin = _game.positionCommand;
-    _stockfish.stdin = 'go depth 5';
+    _stockfish.stdin = 'go depth 10';
   }
 
   void _undoMove() {
@@ -393,9 +431,10 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
                   label: const Text('Undo'),
                 ),
                 ElevatedButton.icon(
-                  onPressed: _isThinking ? null : _getHint,
-                  icon: const Icon(Icons.lightbulb_outline),
-                  label: const Text('Hint'),
+                // Disable button if it's black's turn
+                onPressed: (!_boardState.whiteToMove || _isThinking) ? null : _getHint,
+                icon: const Icon(Icons.lightbulb_outline),
+                label: const Text('Hint'),
                 ),
               ],
             ),
