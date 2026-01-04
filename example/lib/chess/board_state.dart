@@ -64,9 +64,13 @@ class BoardState {
   
   void makeMove(int fromRow, int fromCol, int toRow, int toCol) {
     final piece = board[fromRow][fromCol];
+    if (piece == null) return;
+
     board[toRow][toCol] = piece;
     board[fromRow][fromCol] = null;
-    whiteToMove = !whiteToMove;
+    
+    // Switch turn
+    whiteToMove = (piece.color == PieceColor.black); 
   }
   
   void reset() {

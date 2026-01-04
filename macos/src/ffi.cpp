@@ -27,7 +27,7 @@
 
 const char *QUITOK = "quitok\n";
 int pipes[NUM_PIPES][2];
-char buffer[80];
+char buffer[4096];
 
 void check_file_detailed(const char* path) {
     struct stat st;
@@ -138,7 +138,7 @@ FFI_EXPORT int stockfish_main()
 
 FFI_EXPORT ssize_t stockfish_stdin_write(char *data)
 {
-    std::cerr << "STDIN >> " << data << std::flush;
+    // std::cerr << "STDIN >> " << data << std::flush;
     return write(PARENT_WRITE_FD, data, strlen(data));
 }
 
@@ -148,7 +148,7 @@ FFI_EXPORT char *stockfish_stdout_read()
     if (count <= 0) return NULL;
     buffer[count] = 0;
     if (strcmp(buffer, QUITOK) == 0) return NULL;
-    std::cerr << "STDOUT << " << buffer << std::flush;
+    // std::cerr << "STDOUT << " << buffer << std::flush;
     return buffer;
 }
 

@@ -3,7 +3,8 @@ import 'package:logging/logging.dart';
 import 'screens/chess_game_screen.dart';
 
 void main() {
-  Logger.root.level = Level.ALL;
+  // Logger.root.level = Level.ALL;
+  Logger.root.level = Level.WARNING;
   Logger.root.onRecord.listen((record) {
     debugPrint('${record.level.name}: ${record.time}: ${record.message}');
   });

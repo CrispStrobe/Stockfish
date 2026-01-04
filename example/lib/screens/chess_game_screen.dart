@@ -1,344 +1,341 @@
 import 'package:flutter/material.dart';
-import 'package:stockfish/stockfish.dart';
-import '../chess/board_state.dart';
 import '../chess/chess_game.dart';
+import '../chess/board_state.dart';
 import '../widgets/chess_board.dart';
+import 'settings_screen.dart';
+import 'package:stockfish/stockfish.dart';
 
 class ChessGameScreen extends StatefulWidget {
-  const ChessGameScreen({Key? key}) : super(key: key);
-  
+  const ChessGameScreen({super.key});
+
   @override
   State<ChessGameScreen> createState() => _ChessGameScreenState();
 }
 
 class _ChessGameScreenState extends State<ChessGameScreen> {
-  late Stockfish stockfish;
-  late BoardState boardState;
-  late ChessGame game;
-  
-  List<String> engineOutput = [];
-  String? hintMove;
-  int skillLevel = 10;
-  bool thinking = false;
-  String statusMessage = 'Initializing...';
-  
+  late ChessGame _game;
+  late BoardState _boardState;
+  late Stockfish _stockfish;
+  int _skillLevel = 10;
+  String _statusMessage = 'Your turn (White)';
+  bool _isThinking = false;
+  String? _hintMove;
+  String _lastMove = '';
+
   @override
   void initState() {
     super.initState();
-    
-    try {
-      stockfish = Stockfish();
-      boardState = BoardState();
-      game = ChessGame();
-      
-      // Listen to Stockfish output
-      stockfish.stdout.listen(
-        (line) {
-          debugPrint('Stockfish: $line');
-          setState(() {
-            engineOutput.insert(0, line);
-            if (engineOutput.length > 100) engineOutput.removeLast();
-          });
-          
-          // Parse best move
-          if (line.startsWith('bestmove')) {
-            final parts = line.split(' ');
-            if (parts.length >= 2) {
-              _makeEngineMove(parts[1]);
-            }
-          }
-        },
-        onError: (error) {
-          debugPrint('Stockfish error: $error');
-          setState(() => statusMessage = 'Error: $error');
-        },
-      );
-      
-      // Initialize engine
-      Future.delayed(Duration(milliseconds: 500), () {
-        try {
-          _sendCommand('setoption name Threads value 1');
-          _sendCommand('setoption name Skill Level value $skillLevel');
-          setState(() => statusMessage = 'Ready - White to move');
-        } catch (e) {
-          debugPrint('Init error: $e');
-          setState(() => statusMessage = 'Init error: $e');
+    _game = ChessGame();
+    _boardState = BoardState();
+    _stockfish = Stockfish();
+    _initializeStockfish();
+  }
+
+  void _initializeStockfish() {
+    // Listen to state changes to know when the engine is actually ready
+    _stockfish.state.addListener(_onStockfishStateChange);
+
+    _stockfish.stdout.listen((line) {
+        // Optimization: Clean up line and skip empty/noisy output
+        final trimmedLine = line.trim();
+        if (trimmedLine.isEmpty) return;
+        
+        debugPrint('Stockfish: $trimmedLine');
+        
+        if (trimmedLine.startsWith('bestmove')) {
+        final parts = trimmedLine.split(' ');
+        if (parts.length >= 2 && parts[1] != '(none)') {
+            _makeStockfishMove(parts[1]);
         }
-      });
-    } catch (e) {
-      debugPrint('Fatal error in initState: $e');
-      setState(() => statusMessage = 'Fatal error: $e');
+        }
+    });
     }
-  }
-  
-  void _sendCommand(String cmd) {
-    try {
-      debugPrint('Sending command: $cmd');
-      if (stockfish.state.value == StockfishState.ready) {
-        stockfish.stdin = cmd;
-      } else {
-        debugPrint('Stockfish not ready: ${stockfish.state.value}');
-      }
-    } catch (e) {
-      debugPrint('Error sending command: $e');
-      setState(() => statusMessage = 'Command error: $e');
-    }
-  }
-  
-  void _makeEngineMove(String move) {
-    try {
-      debugPrint('Engine move: $move');
-      if (move.length >= 4) {
-        final fromSquare = move.substring(0, 2);
-        final toSquare = move.substring(2, 4);
+
+    void _onStockfishStateChange() {
+        debugPrint('Stockfish state: ${_stockfish.state.value}');
         
-        final fromCol = fromSquare.codeUnitAt(0) - 97;
-        final fromRow = 8 - int.parse(fromSquare[1]);
-        final toCol = toSquare.codeUnitAt(0) - 97;
-        final toRow = 8 - int.parse(toSquare[1]);
-        
-        setState(() {
-          boardState.makeMove(fromRow, fromCol, toRow, toCol);
-          game.makeMove(move);
-          thinking = false;
-          statusMessage = boardState.whiteToMove ? 'White to move' : 'Black to move';
-        });
-      }
-    } catch (e) {
-      debugPrint('Error making engine move: $e');
-      setState(() {
-        thinking = false;
-        statusMessage = 'Engine move error: $e';
-      });
+        // Only send configuration once the engine is ready
+        if (_stockfish.state.value == StockfishState.ready) {
+            _stockfish.stdin = 'uci';
+            _stockfish.stdin = 'setoption name Threads value 1';
+            _stockfish.stdin = 'setoption name Skill Level value $_skillLevel';
+            _stockfish.stdin = 'isready';
+            
+            // Remove listener after initialization to avoid duplicate config calls
+            _stockfish.state.removeListener(_onStockfishStateChange);
+        }
     }
-  }
-  
+
+  void _makeStockfishMove(String uciMove) {
+    if (uciMove.length < 4) return;
+    
+    final fromFile = uciMove[0].codeUnitAt(0) - 'a'.codeUnitAt(0);
+    final fromRank = 8 - int.parse(uciMove[1]);
+    final toFile = uciMove[2].codeUnitAt(0) - 'a'.codeUnitAt(0);
+    final toRank = 8 - int.parse(uciMove[3]);
+
+    setState(() {
+        if (uciMove.length == 5) {
+        // Handle Pawn Promotion (e.g., "e7e8q")
+        final promoChar = uciMove[4].toLowerCase();
+        PieceType type = PieceType.queen; // Default
+        if (promoChar == 'r') type = PieceType.rook;
+        else if (promoChar == 'b') type = PieceType.bishop;
+        else if (promoChar == 'n') type = PieceType.knight;
+
+        _boardState.board[fromRank][fromFile] = null;
+        _boardState.board[toRank][toFile] = ChessPiece(type, PieceColor.black);
+        _boardState.whiteToMove = true; 
+        } else {
+        _boardState.makeMove(fromRank, fromFile, toRank, toFile);
+        }
+
+        _game.makeMove(uciMove);
+        _lastMove = 'Stockfish: $uciMove';
+        _statusMessage = 'Your turn (White)';
+        _isThinking = false;
+    });
+    }
+
   void _onMove(int fromRow, int fromCol, int toRow, int toCol) {
-    try {
-      debugPrint('Move attempt: ($fromRow,$fromCol) -> ($toRow,$toCol)');
-      
-      final piece = boardState.board[fromRow][fromCol];
-      if (piece == null) {
-        debugPrint('No piece at source');
-        return;
+    if (!_boardState.whiteToMove || _isThinking) return;
+
+    final uciMove = _boardState.squareToAlgebraic(fromRow, fromCol) +
+                    _boardState.squareToAlgebraic(toRow, toCol);
+
+    setState(() {
+      _boardState.makeMove(fromRow, fromCol, toRow, toCol);
+      _game.makeMove(uciMove);
+      _lastMove = 'You: $uciMove';
+      _statusMessage = "Stockfish is thinking...";
+      _isThinking = true;
+    });
+
+    _requestStockfishMove();
+  }
+
+  void _requestStockfishMove() {
+    _stockfish.stdin = _game.positionCommand;
+    _stockfish.stdin = 'go depth 10';
+  }
+
+  void _getHint() {
+    if (_isThinking) return;
+    
+    setState(() {
+      _statusMessage = 'Getting hint...';
+    });
+    
+    _stockfish.stdout.listen((line) {
+      if (line.startsWith('bestmove')) {
+        final parts = line.split(' ');
+        if (parts.length >= 2) {
+          setState(() {
+            _hintMove = parts[1];
+            _statusMessage = 'Hint: $_hintMove - Your turn (White)';
+          });
+        }
       }
+    });
+    
+    _stockfish.stdin = _game.positionCommand;
+    _stockfish.stdin = 'go depth 5';
+  }
+
+  void _undoMove() {
+    if (_game.moveHistory.length < 2 || _isThinking) return;
+
+    setState(() {
+      // Remove last two moves (player and Stockfish)
+      _game.undoMove();
+      _game.undoMove();
       
-      final isWhitePiece = piece.color == PieceColor.white;
-      if (isWhitePiece != boardState.whiteToMove) {
-        setState(() => statusMessage = 'Not your turn!');
-        return;
+      // Reset board and replay all moves
+      _boardState.reset();
+      for (var move in _game.moveHistory) {
+        _replayMove(move);
       }
-      
-      final move = boardState.squareToAlgebraic(fromRow, fromCol) +
-          boardState.squareToAlgebraic(toRow, toCol);
-      
-      debugPrint('Making move: $move');
-      
-      setState(() {
-        boardState.makeMove(fromRow, fromCol, toRow, toCol);
-        game.makeMove(move);
-        hintMove = null;
-        statusMessage = 'Thinking...';
-      });
-      
-      // Engine's turn
-      _requestEngineMove();
-    } catch (e) {
-      debugPrint('Error in onMove: $e');
-      setState(() => statusMessage = 'Move error: $e');
-    }
+      _statusMessage = 'Your turn (White)';
+      _hintMove = null;
+    });
   }
-  
-  void _requestEngineMove() {
-    try {
-      setState(() => thinking = true);
-      _sendCommand(game.positionCommand);
-      _sendCommand('go depth ${20 - skillLevel}');
-    } catch (e) {
-      debugPrint('Error requesting engine move: $e');
-      setState(() {
-        thinking = false;
-        statusMessage = 'Engine request error: $e';
-      });
-    }
+
+  void _replayMove(String uciMove) {
+    if (uciMove.length < 4) return;
+    
+    final fromFile = uciMove[0].codeUnitAt(0) - 'a'.codeUnitAt(0);
+    final fromRank = 8 - int.parse(uciMove[1]);
+    final toFile = uciMove[2].codeUnitAt(0) - 'a'.codeUnitAt(0);
+    final toRank = 8 - int.parse(uciMove[3]);
+
+    _boardState.makeMove(fromRank, fromFile, toRank, toFile);
   }
-  
-  void _requestHint() {
-    try {
-      _sendCommand(game.positionCommand);
-      _sendCommand('go depth 10');
-    } catch (e) {
-      debugPrint('Error requesting hint: $e');
-    }
-  }
-  
-  void _undo() {
-    try {
-      if (game.moveHistory.length >= 2) {
-        setState(() {
-          game.undoMove();
-          game.undoMove();
-          boardState.reset();
-          
-          for (final move in game.moveHistory) {
-            if (move.length >= 4) {
-              final fromSquare = move.substring(0, 2);
-              final toSquare = move.substring(2, 4);
-              final fromCol = fromSquare.codeUnitAt(0) - 97;
-              final fromRow = 8 - int.parse(fromSquare[1]);
-              final toCol = toSquare.codeUnitAt(0) - 97;
-              final toRow = 8 - int.parse(toSquare[1]);
-              boardState.makeMove(fromRow, fromCol, toRow, toCol);
-            }
-          }
-          hintMove = null;
-          statusMessage = boardState.whiteToMove ? 'White to move' : 'Black to move';
-        });
-      }
-    } catch (e) {
-      debugPrint('Error in undo: $e');
-      setState(() => statusMessage = 'Undo error: $e');
-    }
-  }
-  
+
   void _newGame() {
-    try {
+    setState(() {
+      _game.reset();
+      _boardState.reset();
+      _statusMessage = 'Your turn (White)';
+      _isThinking = false;
+      _hintMove = null;
+      _lastMove = '';
+    });
+  }
+
+  Future<void> _openSettings() async {
+    final newSkillLevel = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SettingsScreen(skillLevel: _skillLevel),
+      ),
+    );
+
+    if (newSkillLevel != null && newSkillLevel != _skillLevel) {
       setState(() {
-        game.reset();
-        boardState.reset();
-        engineOutput.clear();
-        hintMove = null;
-        thinking = false;
-        statusMessage = 'New game - White to move';
+        _skillLevel = newSkillLevel;
       });
-    } catch (e) {
-      debugPrint('Error in new game: $e');
-      setState(() => statusMessage = 'New game error: $e');
+      _stockfish.stdin = 'setoption name Skill Level value $_skillLevel';
     }
   }
-  
+
+  @override
+  void dispose() {
+    _stockfish.stdin = 'quit';
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Chess with Stockfish'),
+        title: const Text('Stockfish Chess'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: _openSettings,
+          ),
+        ],
       ),
       body: Column(
         children: [
+          // Status bar
           Container(
-            padding: EdgeInsets.all(8),
-            color: Colors.blue.shade100,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            color: _isThinking ? Colors.orange.shade100 : Colors.blue.shade100,
+            child: Column(
               children: [
-                Expanded(child: Text(statusMessage)),
-                if (thinking)
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                Text(
+                  _statusMessage,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
-              ],
-            ),
-          ),
-
-          Padding(
-            padding: EdgeInsets.all(8),
-            child: ElevatedButton(
-                onPressed: () {
-                debugPrint('Test button clicked');
-                try {
-                    // Test a simple move without drag/drop
-                    setState(() {
-                    // Move white pawn e2-e4
-                    boardState.makeMove(6, 4, 4, 4); // row 6 col 4 to row 4 col 4
-                    game.makeMove('e2e4');
-                    statusMessage = 'Test move made';
-                    });
-                    debugPrint('Test move completed');
-                } catch (e) {
-                    debugPrint('Test move error: $e');
-                    setState(() => statusMessage = 'Test error: $e');
-                }
-                },
-                child: Text('Test Move (e2-e4)'),
-            ),
-            ),
-          
-          Expanded(
-            flex: 2,
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: ChessBoard(
-                  boardState: boardState,
-                  onMove: _onMove,
-                  hintMove: hintMove,
+                  textAlign: TextAlign.center,
                 ),
-              ),
-            ),
-          ),
-          
-          Padding(
-            padding: EdgeInsets.all(8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _newGame,
-                  icon: Icon(Icons.refresh),
-                  label: Text('New Game'),
+                const SizedBox(height: 8),
+                Text(
+                  'You: White ● Stockfish: Black',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade700,
+                  ),
                 ),
-                ElevatedButton.icon(
-                  onPressed: game.moveHistory.length >= 2 ? _undo : null,
-                  icon: Icon(Icons.undo),
-                  label: Text('Undo'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _requestHint,
-                  icon: Icon(Icons.lightbulb_outline),
-                  label: Text('Hint'),
-                ),
-              ],
-            ),
-          ),
-          
-          Expanded(
-            child: Container(
-              color: Colors.black87,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                if (_lastMove.isNotEmpty)
                   Padding(
-                    padding: EdgeInsets.all(8),
+                    padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      'Stockfish Debug Output:',
+                      'Last move: $_lastMove',
                       style: TextStyle(
-                        color: Colors.green,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
                       ),
                     ),
                   ),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: EdgeInsets.all(8),
-                      itemCount: engineOutput.length,
-                      itemBuilder: (context, index) {
-                        return Text(
-                          engineOutput[index],
-                          style: TextStyle(
-                            color: Colors.green,
-                            fontFamily: 'monospace',
-                            fontSize: 10,
-                          ),
-                        );
-                      },
+                if (_isThinking)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
                   ),
-                ],
+              ],
+            ),
+          ),
+          
+          // Chess board
+          Expanded(
+            child: Center(
+              child: ChessBoard(
+                boardState: _boardState,
+                onMove: _onMove,
+                hintMove: _hintMove,
               ),
+            ),
+          ),
+
+          // Move history
+          Container(
+            height: 60,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _game.moveHistory.isEmpty
+                ? const Center(child: Text('No moves yet'))
+                : ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: (_game.moveHistory.length / 2).ceil(),
+                    itemBuilder: (context, index) {
+                      final moveNum = index + 1;
+                      final whiteMove = _game.moveHistory[index * 2];
+                      final blackMove = index * 2 + 1 < _game.moveHistory.length
+                          ? _game.moveHistory[index * 2 + 1]
+                          : null;
+                      
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$moveNum. $whiteMove',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            if (blackMove != null)
+                              Text(
+                                '$moveNum... $blackMove',
+                                style: TextStyle(color: Colors.grey.shade700),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+
+          // Control buttons
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _newGame,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('New Game'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _isThinking ? null : _undoMove,
+                  icon: const Icon(Icons.undo),
+                  label: const Text('Undo'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: _isThinking ? null : _getHint,
+                  icon: const Icon(Icons.lightbulb_outline),
+                  label: const Text('Hint'),
+                ),
+              ],
             ),
           ),
         ],
