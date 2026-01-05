@@ -1,5 +1,10 @@
 import 'dart:ffi';
+import 'dart:io';
 import 'package:ffi/ffi.dart';
+
+void _logAttempt(String msg) {
+  print('🔍 FFI: $msg');
+}
 
 @Native<Int32 Function()>(symbol: 'stockfish_init', assetId: 'package:stockfish/stockfish.dart')
 external int nativeInit();

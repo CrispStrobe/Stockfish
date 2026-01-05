@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:isolate';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
@@ -84,7 +86,14 @@ class Stockfish {
 
   /// Stops the C++ engine.
   void dispose() {
+    _logger.fine('Disposing Stockfish instance');
     stdin = 'quit';
+    
+    // Give it time to cleanup
+    Future.delayed(Duration(milliseconds: 100), () {
+      _mainPort.close();
+      _stdoutPort.close();
+    });
   }
 
   void _cleanUp(int exitCode) {
@@ -146,11 +155,28 @@ void _isolateStdout(SendPort stdoutPort) {
       return;
     }
 
-    final data = previous + pointer.toDartString();
-    final lines = data.split('\n');
-    previous = lines.removeLast();
-    for (final line in lines) {
-      stdoutPort.send(line);
+    try {
+      // Simply use toDartString but handle potential errors
+      String data;
+      try {
+        data = pointer.toDartString();
+      } catch (e) {
+        // If toDartString fails, skip this chunk and continue
+        _logger.warning('Failed to decode UTF-8: $e');
+        continue;
+      }
+      
+      final fullData = previous + data;
+      final lines = fullData.split('\n');
+      previous = lines.removeLast();
+      
+      for (final line in lines) {
+        if (line.isNotEmpty) {
+          stdoutPort.send(line);
+        }
+      }
+    } catch (e) {
+      _logger.severe('Error reading stockfish output: $e');
     }
   }
 }
