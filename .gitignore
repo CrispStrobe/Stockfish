@@ -10,3 +10,5 @@ build/
 .depend
 *.nnue
 Makefile
+
+example/node_modules/

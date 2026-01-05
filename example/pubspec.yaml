@@ -12,6 +12,8 @@ dependencies:
     sdk: flutter
   logging: ^1.2.0
   chess: ^0.8.1
+  web: ^1.0.0 
+  
   stockfish:
     path: ../
 
@@ -24,3 +26,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/stockfish.js
