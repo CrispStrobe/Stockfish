@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 class SettingsScreen extends StatefulWidget {
-  final int opponentSkillLevel;
-  final int hintSkillLevel;
+  final int strengthLevel;
+  final int hintDepth;
   
   const SettingsScreen({
     Key? key, 
-    required this.opponentSkillLevel,
-    required this.hintSkillLevel,
+    required this.strengthLevel,
+    required this.hintDepth,
   }) : super(key: key);
   
   @override
@@ -15,29 +15,40 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late int _opponentSkillLevel;
-  late int _hintSkillLevel;
+  late int _strengthLevel;
+  late int _hintDepth;
   bool _showValidMoves = true;
   bool _animateMoves = true;
   
   @override
   void initState() {
     super.initState();
-    _opponentSkillLevel = widget.opponentSkillLevel;
-    _hintSkillLevel = widget.hintSkillLevel;
+    _strengthLevel = widget.strengthLevel;
+    _hintDepth = widget.hintDepth;
   }
   
-  String getDifficultyLabel(int level) {
-    if (level <= 5) return 'Beginner';
+  String _getStrengthDescription(int level) {
+    if (level <= 3) return 'Beginner (Learning)';
+    if (level <= 6) return 'Novice (Casual)';
     if (level <= 10) return 'Intermediate';
-    if (level <= 15) return 'Advanced';
-    return 'Expert';
+    if (level <= 14) return 'Advanced';
+    if (level <= 17) return 'Expert';
+    return 'Master+';
   }
   
-  Color getColorForSkill(int level) {
-    if (level <= 5) return Colors.green;
-    if (level <= 10) return Colors.orange;
-    if (level <= 15) return Colors.red;
+  int _getEstimatedElo(int level) {
+    return 800 + (level * 80);
+  }
+  
+  int _getSearchDepth(int level) {
+    return 3 + level;
+  }
+  
+  Color _getColorForStrength(int level) {
+    if (level <= 6) return Colors.green;
+    if (level <= 10) return Colors.blue;
+    if (level <= 14) return Colors.orange;
+    if (level <= 17) return Colors.red;
     return Colors.purple;
   }
   
@@ -54,6 +65,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'Opponent Strength',
             style: Theme.of(context).textTheme.titleLarge,
           ),
+          SizedBox(height: 8),
+          Text(
+            'Uses multiple techniques: Skill Level + ELO limiting + Search depth',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12, fontStyle: FontStyle.italic),
+          ),
           SizedBox(height: 16),
           Card(
             child: Padding(
@@ -64,30 +80,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Level: $_opponentSkillLevel',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Level $_strengthLevel',
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            _getStrengthDescription(_strengthLevel),
+                            style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+                          ),
+                        ],
                       ),
                       Chip(
-                        label: Text(getDifficultyLabel(_opponentSkillLevel)),
-                        backgroundColor: getColorForSkill(_opponentSkillLevel),
+                        label: Text(
+                          _getStrengthDescription(_strengthLevel),
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                        backgroundColor: _getColorForStrength(_strengthLevel),
                       ),
                     ],
                   ),
-                  SizedBox(height: 8),
+                  SizedBox(height: 16),
                   Slider(
-                    value: _opponentSkillLevel.toDouble(),
+                    value: _strengthLevel.toDouble(),
                     min: 0,
                     max: 20,
                     divisions: 20,
-                    label: _opponentSkillLevel.toString(),
+                    label: _strengthLevel.toString(),
                     onChanged: (value) {
-                      setState(() => _opponentSkillLevel = value.round());
+                      setState(() => _strengthLevel = value.round());
                     },
                   ),
-                  Text(
-                    'This controls how strong Stockfish plays against you',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                  SizedBox(height: 16),
+                  Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Technical Details:',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.blue.shade900,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.speed, size: 16, color: Colors.blue.shade700),
+                            SizedBox(width: 8),
+                            Text(
+                              'Skill Level: $_strengthLevel/20',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.trending_up, size: 16, color: Colors.blue.shade700),
+                            SizedBox(width: 8),
+                            Text(
+                              'Estimated ELO: ~${_getEstimatedElo(_strengthLevel)}',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.layers, size: 16, color: Colors.blue.shade700),
+                            SizedBox(width: 8),
+                            Text(
+                              'Search Depth: ${_getSearchDepth(_strengthLevel)} moves',
+                              style: TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -97,8 +177,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SizedBox(height: 24),
           
           Text(
-            'Hint System Strength',
+            'Hint System',
             style: Theme.of(context).textTheme.titleLarge,
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Hints always use maximum engine strength',
+            style: TextStyle(color: Colors.grey[600], fontSize: 12),
           ),
           SizedBox(height: 16),
           Card(
@@ -111,29 +196,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Level: $_hintSkillLevel',
+                        'Analysis Depth: $_hintDepth',
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                       Chip(
-                        label: Text(getDifficultyLabel(_hintSkillLevel)),
-                        backgroundColor: getColorForSkill(_hintSkillLevel),
+                        label: Text(
+                          _hintDepth < 12 ? 'Quick' : _hintDepth < 18 ? 'Strong' : 'Maximum',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        backgroundColor: _hintDepth < 12 ? Colors.blue : _hintDepth < 18 ? Colors.purple : Colors.deepPurple,
                       ),
                     ],
                   ),
                   SizedBox(height: 8),
                   Slider(
-                    value: _hintSkillLevel.toDouble(),
-                    min: 5,
-                    max: 20,
-                    divisions: 15,
-                    label: _hintSkillLevel.toString(),
+                    value: _hintDepth.toDouble(),
+                    min: 8,
+                    max: 22,
+                    divisions: 14,
+                    label: _hintDepth.toString(),
                     onChanged: (value) {
-                      setState(() => _hintSkillLevel = value.round());
+                      setState(() => _hintDepth = value.round());
                     },
                   ),
+                  SizedBox(height: 8),
                   Text(
-                    'Higher levels give better hints (recommended: 15-20)',
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
+                    'Higher depth = Better hints but slower (${_hintDepth < 12 ? "~1s" : _hintDepth < 18 ? "~3s" : "~5s"})',
+                    style: TextStyle(color: Colors.grey, fontSize: 11),
                   ),
                 ],
               ),
@@ -170,13 +259,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
+          
+          SizedBox(height: 24),
+          
+          Card(
+            color: Colors.green.shade50,
+            child: Padding(
+              padding: EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 20, color: Colors.green.shade700),
+                      SizedBox(width: 8),
+                      Text(
+                        'How Strength Limiting Works',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'CrispChess uses a multi-layered approach:\n\n'
+                    '1. Skill Level (0-20): Makes engine play less accurately\n'
+                    '2. ELO Rating: Targets specific playing strength\n'
+                    '3. Search Depth: Limits how far ahead engine thinks\n\n'
+                    'Combined, these create realistic human-like play at any level.',
+                    style: TextStyle(fontSize: 11, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.pop(context, {
-            'opponent': _opponentSkillLevel,
-            'hint': _hintSkillLevel,
+            'strengthLevel': _strengthLevel,
+            'hintDepth': _hintDepth,
             'showValidMoves': _showValidMoves,
             'animateMoves': _animateMoves,
           });

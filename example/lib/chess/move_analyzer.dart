@@ -16,6 +16,7 @@ class MoveEvaluation {
   final String bestMove;
   final double bestMoveScore;
   final int depth;
+  final bool whiteToMove;  // track whose turn it was
   
   MoveEvaluation({
     required this.scoreBefore,
@@ -23,24 +24,49 @@ class MoveEvaluation {
     required this.bestMove,
     required this.bestMoveScore,
     required this.depth,
+    required this.whiteToMove,
   });
   
-  double get centipawnLoss => (scoreBefore - scoreAfter).abs();
+  // Centipawn loss from the perspective of the player who moved
+  double get centipawnLoss {
+    if (whiteToMove) {
+      // White moved: if eval decreased, that's a loss for White
+      final loss = scoreBefore - scoreAfter;
+      return loss > 0 ? loss : 0; // Only count actual losses
+    } else {
+      // Black moved: if eval increased (more positive), that's a loss for Black
+      final loss = scoreAfter - scoreBefore;
+      return loss > 0 ? loss : 0; // Only count actual losses
+    }
+  }
+  
+  // Get the actual change (can be negative if position improved)
+  double get evaluationChange {
+    if (whiteToMove) {
+      return scoreBefore - scoreAfter;  // Negative = improvement for White
+    } else {
+      return scoreAfter - scoreBefore;  // Negative = improvement for Black
+    }
+  }
   
   MoveQuality get quality {
-    final loss = centipawnLoss;
+    final change = evaluationChange;
     
-    // If move is better than expected
-    if (scoreAfter > scoreBefore + 0.5) {
+    // If move IMPROVED position significantly
+    if (change < -1.0) {
       return MoveQuality.brilliant;
     }
     
-    // Standard thresholds used by chess.com, lichess, etc.
-    if (loss < 0.25) return MoveQuality.good;
-    if (loss < 0.5) return MoveQuality.neutral;
-    if (loss < 1.0) return MoveQuality.interesting;
-    if (loss < 2.0) return MoveQuality.dubious;
-    if (loss < 3.0) return MoveQuality.mistake;
+    // If move improved position slightly or maintained it
+    if (change < 0.3) {
+      return MoveQuality.good;
+    }
+    
+    // Standard thresholds for mistakes (positive change = loss)
+    if (change < 0.5) return MoveQuality.neutral;
+    if (change < 1.0) return MoveQuality.interesting;
+    if (change < 2.0) return MoveQuality.dubious;
+    if (change < 3.0) return MoveQuality.mistake;
     return MoveQuality.blunder;
   }
   
@@ -398,27 +424,36 @@ class MoveAnnotation {
     
     // Add move quality
     if (evaluation.quality != MoveQuality.neutral) {
-      parts.add('${evaluation.symbol} ${_qualityDescription(evaluation.quality)}');
+        parts.add('${evaluation.symbol} ${_qualityDescription(evaluation.quality)}');
     }
     
-    // Add centipawn loss if significant
-    if (evaluation.centipawnLoss > 0.5) {
-      parts.add('Loses ${evaluation.centipawnLoss.toStringAsFixed(1)} pawns');
+    // Add evaluation change description
+    final change = evaluation.evaluationChange;
+    if (change.abs() > 0.3) {
+        if (change < 0) {
+        // Position improved
+        parts.add('Improved position by ${change.abs().toStringAsFixed(1)} pawns');
+        } else {
+        // Position worsened
+        parts.add('Lost ${change.toStringAsFixed(1)} pawns');
+        }
     }
     
     // Add tactical themes
     for (var tactic in tactics) {
-      parts.add('${tactic.name}: ${tactic.description}');
+        parts.add('${tactic.name}: ${tactic.description}');
     }
     
-    // Add positional themes
-    parts.addAll(positionalThemes);
+    // Add positional themes (limit to 2 most important)
+    if (positionalThemes.isNotEmpty) {
+        parts.addAll(positionalThemes.take(2));
+    }
     
     // Add phase-specific advice
     parts.add(getPhaseAdvice());
     
     return parts.join('\n');
-  }
+    }
   
   String _qualityDescription(MoveQuality quality) {
     switch (quality) {

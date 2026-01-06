@@ -1,92 +1,17 @@
 import 'package:chess/chess.dart' as chess;
-
-enum MoveQuality {
-  excellent,  // Best or near-best move
-  good,       // Solid move
-  inaccuracy, // Small mistake
-  mistake,    // Clear error
-  blunder,    // Major error
-}
-
-class MoveAnnotation {
-  final String move;
-  final double? evaluationBefore;
-  final double? evaluationAfter;
-  final MoveQuality? quality;
-  
-  MoveAnnotation({
-    required this.move,
-    this.evaluationBefore,
-    this.evaluationAfter,
-    this.quality,
-  });
-  
-  double? get centipawnLoss {
-    if (evaluationBefore == null || evaluationAfter == null) return null;
-    return (evaluationBefore! - evaluationAfter!).abs();
-  }
-  
-  String get qualitySymbol {
-    if (quality == null) return '';
-    switch (quality!) {
-      case MoveQuality.excellent: return '!!';
-      case MoveQuality.good: return '!';
-      case MoveQuality.inaccuracy: return '?!';
-      case MoveQuality.mistake: return '?';
-      case MoveQuality.blunder: return '??';
-    }
-  }
-  
-  String getFullDescription() {
-    final parts = <String>[];
-    
-    if (quality != null) {
-      parts.add('${qualitySymbol} ${_getQualityText()}');
-    }
-    
-    if (centipawnLoss != null && centipawnLoss! > 0.3) {
-      parts.add('Evaluation change: ${centipawnLoss!.toStringAsFixed(1)} pawns');
-    }
-    
-    if (evaluationAfter != null) {
-      final eval = evaluationAfter!;
-      if (eval > 2.0) {
-        parts.add('White has a winning advantage');
-      } else if (eval > 1.0) {
-        parts.add('White is better');
-      } else if (eval > 0.3) {
-        parts.add('White is slightly better');
-      } else if (eval < -2.0) {
-        parts.add('Black has a winning advantage');
-      } else if (eval < -1.0) {
-        parts.add('Black is better');
-      } else if (eval < -0.3) {
-        parts.add('Black is slightly better');
-      } else {
-        parts.add('Position is equal');
-      }
-    }
-    
-    return parts.isEmpty ? 'Move played' : parts.join('\n');
-  }
-  
-  String _getQualityText() {
-    switch (quality!) {
-      case MoveQuality.excellent: return 'Excellent move!';
-      case MoveQuality.good: return 'Good move';
-      case MoveQuality.inaccuracy: return 'Inaccuracy';
-      case MoveQuality.mistake: return 'Mistake';
-      case MoveQuality.blunder: return 'Blunder!';
-    }
-  }
-}
+import 'move_analyzer.dart';
 
 class ChessGame {
   final chess.Chess _game = chess.Chess();
+  final MoveAnalyzer _analyzer;
   final List<MoveAnnotation> _annotations = [];
   
   double? _lastEvaluation;
   String? _lastBestMove;
+  int? _lastDepth;
+  
+  // Initialize with a separate Chess instance for the analyzer
+  ChessGame() : _analyzer = MoveAnalyzer(chess.Chess());
   
   bool get inCheck => _game.in_check;
   String get currentFEN => _game.fen;
@@ -105,68 +30,110 @@ class ChessGame {
     return cmd;
   }
   
+  List<String> getLegalMoves() {
+    final moves = _game.generate_moves();
+    return moves.map((m) => '${m.fromAlgebraic}${m.toAlgebraic}${m.promotion?.name ?? ""}').toList();
+  }
+  
+  /// Update evaluation from Stockfish
   void updateEvaluation(double evaluation, String bestMove, int depth) {
     _lastEvaluation = evaluation;
     _lastBestMove = bestMove;
+    _lastDepth = depth;
+    
+    // If we have a pending annotation without complete evaluation, update it
+    if (_annotations.isNotEmpty) {
+      final last = _annotations.last;
+      // Check if this is an incomplete annotation (has scoreBefore but scoreAfter is 0)
+      if (last.evaluation.scoreBefore != 0.0 && 
+          last.evaluation.scoreAfter == 0.0 && 
+          last.evaluation.bestMove.isEmpty) {
+        _completeLastAnnotation(evaluation, bestMove, depth);
+      }
+    }
   }
   
+  
+  /// Make a move and create initial annotation
   bool makeMove(String uciMove) {
-    if (uciMove.length < 4) return false;
+  print('--- MAKING MOVE: $uciMove ---');
+  print('Current turn: ${_game.turn == chess.Color.WHITE ? "White" : "Black"}');
+  print('Evaluation before move: $_lastEvaluation');
+  
+  if (uciMove.length < 4) return false;
+  
+  final from = uciMove.substring(0, 2);
+  final to = uciMove.substring(2, 4);
+  final promotion = uciMove.length > 4 ? uciMove.substring(4, 5) : null;
+  
+  // Store evaluation BEFORE making the move AND whose turn it is
+  final evalBefore = _lastEvaluation ?? 0.0;
+  final whiteToMove = _game.turn == chess.Color.WHITE;  // ADD THIS
+  
+  // Make the move in the main game
+  bool success = _game.move({
+    'from': from, 
+    'to': to, 
+    'promotion': promotion
+  });
+  
+  if (success) {
+    print('✅ Move successful');
     
-    final from = uciMove.substring(0, 2);
-    final to = uciMove.substring(2, 4);
-    final promotion = uciMove.length > 4 ? uciMove.substring(4, 5) : null;
+    // Sync the analyzer's game state
+    _analyzer.syncMove(from, to, promotion);
     
-    final evalBefore = _lastEvaluation;
+    // Create INCOMPLETE annotation with temporary evaluation
+    final tempEval = MoveEvaluation(
+      scoreBefore: evalBefore,
+      scoreAfter: 0.0,
+      bestMove: '',
+      bestMoveScore: 0.0,
+      depth: _lastDepth ?? 10,
+      whiteToMove: whiteToMove,  // ADD THIS
+    );
     
-    bool success = _game.move({
-      'from': from, 
-      'to': to, 
-      'promotion': promotion
-    });
+    final annotation = _analyzer.analyzeMove(
+      uciMove: uciMove,
+      evaluation: tempEval,
+    );
     
-    if (success && evalBefore != null) {
-      // Create annotation with evaluation before
-      // Evaluation after will be updated later
-      _annotations.add(MoveAnnotation(
-        move: uciMove,
-        evaluationBefore: evalBefore,
-      ));
-    }
-    
-    return success;
+    _annotations.add(annotation);
+    print('📝 Created incomplete annotation (will complete when eval arrives)');
+  } else {
+    print('❌ Move failed');
   }
   
-  void updateLastAnnotation(double evalAfter) {
-    if (_annotations.isEmpty) return;
-    
-    final last = _annotations.last;
-    if (last.evaluationBefore == null) return;
-    
-    // Calculate quality based on centipawn loss
-    MoveQuality quality;
-    final loss = (last.evaluationBefore! - evalAfter).abs();
-    
-    if (loss < 0.3) {
-      quality = MoveQuality.excellent;
-    } else if (loss < 0.7) {
-      quality = MoveQuality.good;
-    } else if (loss < 1.5) {
-      quality = MoveQuality.inaccuracy;
-    } else if (loss < 3.0) {
-      quality = MoveQuality.mistake;
-    } else {
-      quality = MoveQuality.blunder;
-    }
-    
-    // Replace with updated annotation
-    _annotations[_annotations.length - 1] = MoveAnnotation(
-      move: last.move,
-      evaluationBefore: last.evaluationBefore,
-      evaluationAfter: evalAfter,
-      quality: quality,
-    );
-  }
+  return success;
+}
+
+void _completeLastAnnotation(double evalAfter, String bestMove, int depth) {
+  if (_annotations.isEmpty) return;
+  
+  final incomplete = _annotations.last;
+  final evalBefore = incomplete.evaluation.scoreBefore;
+  final whiteToMove = incomplete.evaluation.whiteToMove;  // GET THIS
+  
+  // Create complete MoveEvaluation
+  final completeEval = MoveEvaluation(
+    scoreBefore: evalBefore,
+    scoreAfter: evalAfter,
+    bestMove: bestMove,
+    bestMoveScore: evalAfter,
+    depth: depth,
+    whiteToMove: whiteToMove,  // ADD THIS
+  );
+  
+  // Re-analyze with complete evaluation
+  final completeAnnotation = _analyzer.analyzeMove(
+    uciMove: incomplete.move,
+    evaluation: completeEval,
+  );
+  
+  _annotations[_annotations.length - 1] = completeAnnotation;
+  
+  print('✅ Completed annotation for ${incomplete.move}: ${completeEval.quality} (change: ${completeEval.evaluationChange.toStringAsFixed(2)})');
+}
   
   bool get isGameOver => _game.game_over;
   
@@ -185,20 +152,18 @@ class ChessGame {
   
   void undoMove() {
     _game.undo();
+    _analyzer.syncUndo();
     if (_annotations.isNotEmpty) {
       _annotations.removeLast();
     }
   }
-
-  List<String> getLegalMoves() {
-    final moves = _game.generate_moves();
-    return moves.map((m) => '${m.fromAlgebraic}${m.toAlgebraic}${m.promotion?.name ?? ""}').toList();
-    }
   
   void reset() {
     _game.reset();
+    _analyzer.syncReset();
     _annotations.clear();
     _lastEvaluation = null;
     _lastBestMove = null;
+    _lastDepth = null;
   }
 }

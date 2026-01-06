@@ -5,6 +5,8 @@ import '../widgets/chess_board.dart';
 import 'settings_screen.dart';
 import 'package:stockfish/stockfish.dart';
 import '../widgets/horizontal_evaluation_bar.dart';
+import '../chess/engine_controller.dart';
+import '../chess/engine_capabilities.dart';
 
 class ChessGameScreen extends StatefulWidget {
   const ChessGameScreen({super.key});
@@ -17,8 +19,10 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   late ChessGame _game;
   late BoardState _boardState;
   late Stockfish _stockfish;
-  int _opponentSkillLevel = 10;
-  int _hintSkillLevel = 15;
+  late EngineController _engineController; 
+
+  int _strengthLevel = 10;  // 0-20 scale
+  int _hintDepth = 15;
 
   bool _showValidMoves = true;
   bool _animateMoves = true;
@@ -44,6 +48,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
     _game = ChessGame();
     _boardState = BoardState();
     _stockfish = Stockfish();
+    _engineController = EngineController(_stockfish);
     _initializeStockfish();
   }
 
@@ -62,113 +67,116 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
 
   void _initializeStockfish() {
     _stockfish.state.addListener(_onStockfishStateChange);
-
+    
     _stockfish.stdout.listen((line) {
-        final trimmedLine = line.trim();
-        if (trimmedLine.isEmpty) return;
-        
-        debugPrint('📊 Stockfish: $trimmedLine');
-        
-        if (trimmedLine.startsWith('info') && trimmedLine.contains('depth')) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.isEmpty) return;
+      
+      debugPrint('📊 Stockfish: $trimmedLine');
+      
+      // Parse evaluation info
+      if (trimmedLine.startsWith('info') && trimmedLine.contains('depth')) {
         final cpMatch = RegExp(r'score cp (-?\d+)').firstMatch(trimmedLine);
         final depthMatch = RegExp(r'depth (\d+)').firstMatch(trimmedLine);
         final pvMatch = RegExp(r'pv (\S+)').firstMatch(trimmedLine);
         
         if (cpMatch != null && depthMatch != null) {
-            final cp = int.parse(cpMatch.group(1)!);
-            final depth = int.parse(depthMatch.group(1)!);
-            final bestMove = pvMatch?.group(1);
-            
-            setState(() {
+          final cp = int.parse(cpMatch.group(1)!);
+          final depth = int.parse(depthMatch.group(1)!);
+          final bestMove = pvMatch?.group(1) ?? '';
+          
+          setState(() {
             _currentEvaluation = cp / 100.0;
             _analysisDepth = depth;
-            if (bestMove != null) _currentBestMove = bestMove;
-            });
-            
-            if (bestMove != null) {
+            if (bestMove.isNotEmpty) _currentBestMove = bestMove;
+          });
+          
+          if (bestMove.isNotEmpty) {
             _game.updateEvaluation(_currentEvaluation!, bestMove, depth);
-            }
+          }
         }
-        }
-        
-        if (trimmedLine.startsWith('bestmove')) {
+      }
+      
+      if (trimmedLine.startsWith('bestmove')) {
         final parts = trimmedLine.split(' ');
         if (parts.length >= 2 && parts[1] != '(none)') {
-            final move = parts[1];
-            
-            if (_waitingForHint) {
+          final move = parts[1];
+          
+          if (_waitingForHint) {
             _handleHintResponse(move);
-            } else {
+          } else if (_isThinking) {
             _makeStockfishMove(move);
-            }
+          }
         }
-        }
-    });
-    }
-
-void _onStockfishStateChange() {
-  final currentState = _stockfish.state.value;
-  debugPrint('🔄 Stockfish state changed to: $currentState');
-  
-  if (currentState == StockfishState.ready) {
-  debugPrint('✅ Stockfish is ready, initializing...');
-  
-  try {
-    _stockfish.stdin = 'uci';
-    _stockfish.stdin = 'setoption name Threads value 1';
-    _stockfish.stdin = 'setoption name Skill Level value $_opponentSkillLevel';  // Use opponent level
-    _stockfish.stdin = 'isready';
-    
-    setState(() {
-      _statusMessage = 'Your turn (White)';
-    });
-  } catch (e) {
-      debugPrint('❌ Error configuring Stockfish: $e');
-      setState(() {
-        _statusMessage = 'Engine error - please restart';
-      });
-    }
-    
-    // Remove listener after initialization
-    _stockfish.state.removeListener(_onStockfishStateChange);
-  } else if (currentState == StockfishState.error) {
-    debugPrint('❌ Stockfish failed to initialize!');
-    
-    // Show error to user
-    setState(() {
-      _statusMessage = 'Chess engine failed to start';
-      _isThinking = false;
-    });
-    
-    // Show dialog
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Engine Error'),
-          content: Text(
-            'The chess engine failed to initialize. Please restart the app.\n\n'
-            'If the problem persists, try reinstalling the app.'
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                // Try to reinitialize
-                _tryReinitializeStockfish();
-              },
-              child: Text('Retry'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel'),
-            ),
-          ],
-        ),
-      );
+      }
     });
   }
-}
+  
+
+    void _onStockfishStateChange() async {
+    final currentState = _stockfish.state.value;
+    debugPrint('🔄 Stockfish state changed to: $currentState');
+    
+    if (currentState == StockfishState.ready) {
+      debugPrint('✅ Stockfish is ready, detecting capabilities...');
+      
+      try {
+        // Detect what the engine supports
+        await _engineController.detectCapabilities();
+        
+        // Apply initial strength settings
+        final settings = StrengthSettings.fromLevel(_strengthLevel);
+        _engineController.applyStrength(settings);
+        
+        // Ready to play
+        _stockfish.stdin = 'isready';
+        
+        setState(() {
+          _statusMessage = 'Your turn (White)';
+        });
+      } catch (e) {
+        debugPrint('❌ Error initializing engine: $e');
+        setState(() {
+          _statusMessage = 'Engine error - please restart';
+        });
+      }
+      
+      _stockfish.state.removeListener(_onStockfishStateChange);
+    } else if (currentState == StockfishState.error) {
+      debugPrint('❌ Stockfish failed to initialize!');
+      
+      setState(() {
+        _statusMessage = 'Chess engine failed to start';
+        _isThinking = false;
+      });
+      
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Engine Error'),
+            content: Text(
+              'The chess engine failed to initialize. Please restart the app.\n\n'
+              'If the problem persists, try reinstalling the app.'
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _tryReinitializeStockfish();
+                },
+                child: Text('Retry'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Cancel'),
+              ),
+            ],
+          ),
+        );
+      });
+    }
+  }
 
 void _tryReinitializeStockfish() {
   debugPrint('🔄 Attempting to reinitialize Stockfish...');
@@ -196,15 +204,17 @@ void _tryReinitializeStockfish() {
 
    
     void _handleHintResponse(String uciMove) {
-    if (!mounted) return;
+        if (!mounted) return;
 
-    setState(() {
-        _waitingForHint = false; // Stop waiting
-        _isThinking = false;     // UNLOCK the board so user can move
-        _hintMove = uciMove;     // This triggers the yellow highlight in ChessBoard
-        _statusMessage = 'Hint: $uciMove';
-    });
-    }
+        setState(() {
+            _waitingForHint = false; // Stop waiting
+            _isThinking = false;     // UNLOCK the board so user can move
+            _hintMove = uciMove;     // This triggers the yellow highlight in ChessBoard
+            _statusMessage = 'Hint: $uciMove';
+        });
+        
+        // DO NOT request any further analysis after a hint - that was causing auto-execution
+        }
 
   void _applyHintMove(String uciMove) {
     // 1. Validate and Logic Move
@@ -260,17 +270,17 @@ void _tryReinitializeStockfish() {
 
   void _makeStockfishMove(String uciMove) {
     if (_game.makeMove(uciMove)) {
-      setState(() {
-        // 1. Update Visual Board from the source of truth (FEN)
-        // This ensures castling, en passant, and promotions always render correctly
+        setState(() {
         _boardState.updateFromFen(_game.currentFEN); 
-
         _lastMove = 'Stockfish: $uciMove';
         _statusMessage = _game.isGameOver ? 'Game Over!' : 'Your turn (White)';
         _isThinking = false;
-      });
+        });
+        
+        // DO NOT automatically request analysis here
+        // Analysis will happen naturally when the player makes their next move
     }
-  }
+    }
 
   void _onSquareTap(int row, int col) {
     if (!_boardState.whiteToMove || _isThinking) return;
@@ -301,14 +311,13 @@ void _tryReinitializeStockfish() {
     }
 
   void _onMove(int fromRow, int fromCol, int toRow, int toCol) {
-    debugPrint('UI Drag: From($fromRow, $fromCol) To($toRow, $toCol)');
+    debugPrint('UI Move: From($fromRow, $fromCol) To($toRow, $toCol)');
     
     if (!_boardState.whiteToMove || _isThinking) {
         debugPrint('Move blocked: whiteToMove=${_boardState.whiteToMove}, isThinking=$_isThinking');
         return;
     }
     
-    // CHECK STOCKFISH STATE BEFORE PROCEEDING
     if (_stockfish.state.value != StockfishState.ready) {
         debugPrint('⚠️ Stockfish is not ready: ${_stockfish.state.value}');
         ScaffoldMessenger.of(context).showSnackBar(
@@ -320,35 +329,30 @@ void _tryReinitializeStockfish() {
         return;
     }
     
-    // Convert coordinates to UCI (e.g., 'e2e4')
     final uciMove = _boardState.squareToAlgebraic(fromRow, fromCol) +
                     _boardState.squareToAlgebraic(toRow, toCol);
 
-    // Attempt the move in the logic layer
     bool isLegal = _game.makeMove(uciMove);
 
     if (isLegal) {
         setState(() {
-        // Sync the visual board with the logic engine's FEN
         _boardState.updateFromFen(_game.currentFEN);
-        
         _lastMove = 'You: $uciMove';
         _hintMove = null;
         
-        // Check if the game ended with this move
         if (_game.isGameOver) {
             _isThinking = false;
             _statusMessage = 'Game Over: ${_game.gameOverReason}';
             _showGameOverDialog();
         } else {
-            // Move is legal and game continues: Start Stockfish
             _statusMessage = "Stockfish is thinking...";
             _isThinking = true;
+            
+            // Request Stockfish to make its move
             _requestStockfishMove();
         }
         });
     } else {
-        // Handle Illegal Move attempt
         ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: const Text('Illegal Move!'),
@@ -361,18 +365,18 @@ void _tryReinitializeStockfish() {
 
   void _requestStockfishMove() {
     if (_stockfish.state.value != StockfishState.ready) {
-        debugPrint('❌ Cannot request move - Stockfish not ready');
-        setState(() {
+      debugPrint('❌ Cannot request move - Stockfish not ready');
+      setState(() {
         _isThinking = false;
         _statusMessage = 'Engine error - your turn';
-        });
-        return;
+      });
+      return;
     }
     
-    _stockfish.stdin = 'setoption name Skill Level value $_opponentSkillLevel';
-    _stockfish.stdin = _game.positionCommand;
-    _stockfish.stdin = 'go depth 10';
-    }
+    final settings = StrengthSettings.fromLevel(_strengthLevel);
+    _engineController.applyStrength(settings);
+    _engineController.requestMove(_game.positionCommand, settings);
+  }
 
   void _checkGameOver() {
     if (_game.isGameOver) {
@@ -386,24 +390,23 @@ void _tryReinitializeStockfish() {
 
   void _getHint() {
     if (_stockfish.state.value != StockfishState.ready) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Engine not ready')),
-        );
-        return;
+      );
+      return;
     }
     
     if (!_boardState.whiteToMove || _isThinking) return;
 
     setState(() {
-        _waitingForHint = true;
-        _isThinking = true;
-        _statusMessage = 'Analyzing position...';
+      _waitingForHint = true;
+      _isThinking = true;
+      _statusMessage = 'Analyzing position...';
     });
 
-    _stockfish.stdin = 'setoption name Skill Level value $_hintSkillLevel';  // Use hint level
-    _stockfish.stdin = _game.positionCommand;
-    _stockfish.stdin = 'go depth 15';  // Deeper search for hints
-    }
+    // Use full strength for hints
+    _engineController.requestAnalysis(_game.positionCommand, _hintDepth);
+  }
 
   void _undoMove() {
     if (_game.moveHistory.length < 2 || _isThinking) return;
@@ -489,20 +492,23 @@ String _getStockfishStatusText() {
         context,
         MaterialPageRoute(
         builder: (context) => SettingsScreen(
-            opponentSkillLevel: _opponentSkillLevel,
-            hintSkillLevel: _hintSkillLevel,
+            strengthLevel: _strengthLevel,
+            hintDepth: _hintDepth,
         ),
         ),
     );
 
     if (result != null) {
         setState(() {
-        _opponentSkillLevel = result['opponent']! as int;
-        _hintSkillLevel = result['hint']! as int;
+        _strengthLevel = result['strengthLevel']! as int;
+        _hintDepth = result['hintDepth']! as int;
         _showValidMoves = result['showValidMoves']! as bool;
         _animateMoves = result['animateMoves']! as bool;
         });
-        _stockfish.stdin = 'setoption name Skill Level value $_opponentSkillLevel';
+        
+        // Apply new strength settings
+        final settings = StrengthSettings.fromLevel(_strengthLevel);
+        _engineController.applyStrength(settings);
     }
     }
 
