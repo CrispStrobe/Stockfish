@@ -14,6 +14,8 @@ dependencies:
   hooks: ^1.0.0
   code_assets: ^1.0.0
   native_toolchain_c: ^0.17.0
+  plugin_platform_interface: ^2.1.0
+  web: ^1.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -26,6 +28,4 @@ flutter:
         ffiPlugin: true
       windows:
         ffiPlugin: true
-  assets:
-    - macos/src/stockfish/nnue/nn-1111cefa1111.nnue
-    - macos/src/stockfish/nn-37f18f62d772.nnue
+  # NNUE files are downloaded at build time by the podspec/CMakeLists scripts

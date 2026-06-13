@@ -31,8 +31,10 @@ void main(List<String> args) async {
         'macos/src/stockfish/tune.cpp',
         'macos/src/stockfish/syzygy/tbprobe.cpp',
         'macos/src/stockfish/nnue/nnue_misc.cpp',
+        'macos/src/stockfish/nnue/nnue_accumulator.cpp',
         'macos/src/stockfish/nnue/network.cpp',
         'macos/src/stockfish/nnue/features/half_ka_v2_hm.cpp',
+        'macos/src/stockfish/nnue/features/full_threats.cpp',
       ],
       flags: [
         '-std=c++17',

@@ -29,8 +29,6 @@ Pod::Spec.new do |s|
     'CLANG_CXX_LIBRARY' => 'libc++'
   }
 
-  s.library = 'c++'
-
   # Keep your NNUE download logic
   s.script_phase = [
     {
