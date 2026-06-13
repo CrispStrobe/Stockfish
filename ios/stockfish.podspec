@@ -14,8 +14,8 @@ Pod::Spec.new do |s|
   # --- THE FIX: Path updates ---
   # We point to 'Classes' for the Swift/Obj-C bridge 
   # and '../src' for the shared C++ engine and FFI bridge.
-  s.source_files = 'Classes/**/*', '../src/ffi.cpp', '../src/ffi.h', '../src/stockfish/**/*.{cpp,h}'
-  s.public_header_files = 'Classes/**/*.h', '../src/ffi.h'
+  s.source_files = 'Classes/**/*', '../macos/src/ffi.cpp', '../macos/src/ffi.h', '../macos/src/stockfish/**/*.{cpp,h}'
+  s.public_header_files = 'Classes/**/*.h', '../macos/src/ffi.h'
   
   s.dependency 'Flutter'
   s.platform = :ios, '12.0'
@@ -24,7 +24,7 @@ Pod::Spec.new do |s|
   s.pod_target_xcconfig = { 
     'DEFINES_MODULE' => 'YES', 
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
-    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/../src/stockfish"',
+    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/../macos/src/stockfish" "$(PODS_TARGET_SRCROOT)/../macos/src"',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
     'CLANG_CXX_LIBRARY' => 'libc++'
   }
@@ -34,12 +34,12 @@ Pod::Spec.new do |s|
     {
       :execution_position => :before_compile,
       :name => 'Download nnue',
-      :script => "cd \"$PODS_TARGET_SRCROOT/../src/stockfish\" && [ -e 'nn-c288c895ea92.nnue' ] || curl --location --remote-name 'https://tests.stockfishchess.org/api/nn/nn-c288c895ea92.nnue'"
+      :script => "cd \"$PODS_TARGET_SRCROOT/../macos/src/stockfish\" && [ -e 'nn-c288c895ea92.nnue' ] || curl --location --remote-name 'https://tests.stockfishchess.org/api/nn/nn-c288c895ea92.nnue'"
     },
     {
       :execution_position => :before_compile,
       :name => 'Download small nnue',
-      :script => "cd \"$PODS_TARGET_SRCROOT/../src/stockfish\" && [ -e 'nn-37f18f62d772.nnue' ] || curl --location --remote-name 'https://tests.stockfishchess.org/api/nn/nn-37f18f62d772.nnue'"
+      :script => "cd \"$PODS_TARGET_SRCROOT/../macos/src/stockfish\" && [ -e 'nn-37f18f62d772.nnue' ] || curl --location --remote-name 'https://tests.stockfishchess.org/api/nn/nn-37f18f62d772.nnue'"
     }
   ]
 
