@@ -21,12 +21,13 @@ Pod::Spec.new do |s|
   s.platform = :ios, '12.0'
   s.ios.deployment_target  = '12.0'
 
-  s.pod_target_xcconfig = { 
-    'DEFINES_MODULE' => 'YES', 
+  s.pod_target_xcconfig = {
+    'DEFINES_MODULE' => 'YES',
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
     'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/src/stockfish" "$(PODS_TARGET_SRCROOT)/src"',
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
-    'CLANG_CXX_LIBRARY' => 'libc++'
+    'CLANG_CXX_LIBRARY' => 'libc++',
+    'GCC_PREPROCESSOR_DEFINITIONS' => '$(inherited) NNUE_EMBEDDING_OFF=1'
   }
 
   # Keep your NNUE download logic
@@ -45,8 +46,8 @@ Pod::Spec.new do |s|
 
   # Compiler flags for consuming targets
   s.xcconfig = {
-    'OTHER_CPLUSPLUSFLAGS[config=Debug]' => '$(inherited) -std=c++17 -DUSE_PTHREADS -DIS_64BIT -DUSE_POPCNT',
-    'OTHER_CPLUSPLUSFLAGS[config=Release]' => '$(inherited) -fno-exceptions -std=c++17 -DUSE_PTHREADS -DNDEBUG -O3 -DIS_64BIT -DUSE_POPCNT -DUSE_NEON=8 -flto=full',
+    'OTHER_CPLUSPLUSFLAGS[config=Debug]' => '$(inherited) -std=c++17 -DUSE_PTHREADS -DIS_64BIT -DUSE_POPCNT -DNNUE_EMBEDDING_OFF',
+    'OTHER_CPLUSPLUSFLAGS[config=Release]' => '$(inherited) -fno-exceptions -std=c++17 -DUSE_PTHREADS -DNDEBUG -O3 -DIS_64BIT -DUSE_POPCNT -DUSE_NEON=8 -flto=full -DNNUE_EMBEDDING_OFF',
     'OTHER_LDFLAGS[config=Release]' => '$(inherited) -flto=full'
   }
 end
