@@ -6,6 +6,8 @@ class ChessGame {
   final MoveAnalyzer _analyzer;
   final List<MoveAnnotation> _annotations = [];
   
+  List<String>? _cachedLegalMoves;
+
   double? _lastEvaluation;
   String? _lastBestMove;
   int? _lastDepth;
@@ -31,8 +33,10 @@ class ChessGame {
   }
   
   List<String> getLegalMoves() {
-    final moves = _game.generate_moves();
-    return moves.map((m) => '${m.fromAlgebraic}${m.toAlgebraic}${m.promotion?.name ?? ""}').toList();
+    _cachedLegalMoves ??= _game.generate_moves()
+        .map((m) => '${m.fromAlgebraic}${m.toAlgebraic}${m.promotion?.name ?? ""}')
+        .toList();
+    return _cachedLegalMoves!;
   }
   
   /// Update evaluation from Stockfish
@@ -74,6 +78,7 @@ class ChessGame {
   });
   
   if (success) {
+    _cachedLegalMoves = null;
     // Sync the analyzer's game state
     _analyzer.syncMove(from, to, promotion);
     
@@ -140,6 +145,7 @@ void _completeLastAnnotation(double evalAfter, String bestMove, int depth) {
   }
   
   void undoMove() {
+    _cachedLegalMoves = null;
     _game.undo();
     _analyzer.syncUndo();
     if (_annotations.isNotEmpty) {
@@ -148,6 +154,7 @@ void _completeLastAnnotation(double evalAfter, String bestMove, int depth) {
   }
   
   void reset() {
+    _cachedLegalMoves = null;
     _game.reset();
     _analyzer.syncReset();
     _annotations.clear();
