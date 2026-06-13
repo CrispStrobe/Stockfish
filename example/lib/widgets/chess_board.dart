@@ -142,25 +142,25 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
       child: GestureDetector(
         onTap: () => widget.onSquareTap?.call(row, col),
         child: DragTarget<Map<String, int>>(
-          onWillAccept: (data) => true,
-          onAccept: (data) {
+          onWillAcceptWithDetails: (details) => true,
+          onAcceptWithDetails: (details) {
             if (widget.onMove != null) {
-              _animateMove(data['row']!, data['col']!, row, col);
-              widget.onMove!(data['row']!, data['col']!, row, col);
+              _animateMove(details.data['row']!, details.data['col']!, row, col);
+              widget.onMove!(details.data['row']!, details.data['col']!, row, col);
             }
           },
           builder: (context, candidateData, rejectedData) {
             Color? bgColor;
             if (isKingInDanger) {
-              bgColor = Colors.red.withOpacity(0.7);
+              bgColor = Colors.red.withValues(alpha: 0.7);
             } else if (isSelected) {
-              bgColor = Colors.blue.withOpacity(0.5);
+              bgColor = Colors.blue.withValues(alpha: 0.5);
             } else if (isValidTarget) {
               bgColor = isLight
-                ? Colors.green.withOpacity(0.3)
-                : Colors.green.withOpacity(0.4);
+                ? Colors.green.withValues(alpha: 0.3)
+                : Colors.green.withValues(alpha: 0.4);
             } else if (isHintSquare) {
-              bgColor = Colors.yellow.withOpacity(0.5);
+              bgColor = Colors.yellow.withValues(alpha: 0.5);
             } else {
               bgColor = isLight ? Colors.brown[200] : Colors.brown[400];
             }
@@ -195,7 +195,7 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
                         width: 12,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.6),
+                          color: Colors.green.withValues(alpha: 0.6),
                           shape: BoxShape.circle,
                         ),
                       ),

@@ -217,28 +217,6 @@ void _tryReinitializeStockfish() {
         // DO NOT request any further analysis after a hint - that was causing auto-execution
         }
 
-  void _applyHintMove(String uciMove) {
-    // 1. Validate and Logic Move
-    if (_game.makeMove(uciMove)) {
-      setState(() {
-        // 2. Update state
-        _lastMove = 'You (Hint): $uciMove';
-        _hintMove = null; // Clear highlight
-
-        // 3. Check Game Over or Continue
-        if (_game.isGameOver) {
-          _statusMessage = 'Game Over: ${_game.gameOverReason}';
-          _showGameOverDialog();
-        } else {
-          // 4. Hand over to Stockfish (Black)
-          _statusMessage = "Stockfish is thinking...";
-          _isThinking = true;
-          _requestStockfishMove();
-        }
-      });
-    }
-  }
-
 
 
     void _showGameOverDialog() {
@@ -361,7 +339,7 @@ void _tryReinitializeStockfish() {
     }
     }
 
-  void _requestStockfishMove() {
+  Future<void> _requestStockfishMove() async {
     if (_stockfish.state.value != StockfishState.ready) {
       debugPrint('Cannot request move - Stockfish not ready');
       setState(() {
@@ -373,20 +351,10 @@ void _tryReinitializeStockfish() {
 
     final settings = StrengthSettings.fromLevel(_strengthLevel);
     _engineController.applyStrength(settings);
-    _engineController.requestMove(_game.positionCommand, settings);
+    await _engineController.requestMove(_game.positionCommand, settings);
   }
 
-  void _checkGameOver() {
-    if (_game.isGameOver) {
-        setState(() {
-        _isThinking = false;
-        _statusMessage = 'Game Over: ${_game.gameOverReason}';
-        });
-        _showGameOverDialog();
-    }
-    }
-
-  void _getHint() {
+  Future<void> _getHint() async {
     if (_stockfish.state.value != StockfishState.ready) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Engine not ready')),
@@ -403,7 +371,7 @@ void _tryReinitializeStockfish() {
     });
 
     // Use full strength for hints
-    _engineController.requestAnalysis(_game.positionCommand, _hintDepth);
+    await _engineController.requestAnalysis(_game.positionCommand, _hintDepth);
   }
 
   void _undoMove() {

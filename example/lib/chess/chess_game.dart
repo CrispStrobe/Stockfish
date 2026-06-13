@@ -30,7 +30,6 @@ class ChessGame {
   final List<MoveAnnotation> _annotations = [];
 
   double? _lastEvaluation;
-  String? _lastBestMove;
   int? _lastDepth;
 
   // Cached board state
@@ -115,7 +114,6 @@ class ChessGame {
   /// Update evaluation from Stockfish
   void updateEvaluation(double evaluation, String bestMove, int depth) {
     _lastEvaluation = evaluation;
-    _lastBestMove = bestMove;
     _lastDepth = depth;
 
     // If we have a pending annotation without complete evaluation, update it
@@ -228,7 +226,6 @@ void _completeLastAnnotation(double evalAfter, String bestMove, int depth) {
     _invalidateCache();
     _annotations.clear();
     _lastEvaluation = null;
-    _lastBestMove = null;
     _lastDepth = null;
   }
 }
