@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../chess/chess_game.dart';
-import '../chess/board_state.dart';
 import '../chess/game_state.dart';
 import '../widgets/chess_board.dart';
 import 'settings_screen.dart';
@@ -19,7 +18,6 @@ class ChessGameScreen extends StatefulWidget {
 
 class _ChessGameScreenState extends State<ChessGameScreen> {
   late ChessGame _game;
-  late BoardState _boardState;
   late Stockfish _stockfish;
   late EngineController _engineController;
 
@@ -45,15 +43,14 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   void initState() {
     super.initState();
     _game = ChessGame();
-    _boardState = BoardState();
     _stockfish = Stockfish();
     _engineController = EngineController(_stockfish);
     _initializeStockfish();
   }
 
   List<String> _getValidMovesForSquare(int row, int col) {
-    final square = _boardState.squareToAlgebraic(row, col);
-    final piece = _boardState.board[row][col];
+    final square = _game.squareToAlgebraic(row, col);
+    final piece = _game.board[row][col];
 
     if (piece == null || piece.color != PieceColor.white) return [];
 
@@ -222,35 +219,6 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
     });
   }
 
-  void _applyHintMove(String uciMove) {
-    // 1. Validate and Logic Move
-    if (_game.makeMove(uciMove)) {
-      setState(() {
-        // 2. Update Visual Board
-        _boardState.updateFromFen(_game.currentFEN);
-        _state = _state.copyWith(
-          lastMove: 'You (Hint): $uciMove',
-          hintMove: null,
-        );
-
-        // 3. Check Game Over or Continue
-        if (_game.isGameOver) {
-          _state = _state.copyWith(
-            statusMessage: 'Game Over: ${_game.gameOverReason}',
-          );
-          _showGameOverDialog();
-        } else {
-          // 4. Hand over to Stockfish (Black)
-          _state = _state.copyWith(
-            statusMessage: 'Stockfish is thinking...',
-            isThinking: true,
-          );
-          _requestStockfishMove();
-        }
-      });
-    }
-  }
-
   void _showGameOverDialog() {
     showDialog(
       context: context,
@@ -281,8 +249,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   void _makeStockfishMove(String uciMove) {
     if (_game.makeMove(uciMove)) {
       setState(() {
-        _boardState.updateFromFen(_game.currentFEN);
-        _state = _state.copyWith(
+                _state = _state.copyWith(
           lastMove: 'Stockfish: $uciMove',
           statusMessage:
               _game.isGameOver ? 'Game Over!' : 'Your turn (White)',
@@ -293,9 +260,9 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   }
 
   void _onSquareTap(int row, int col) {
-    if (!_boardState.whiteToMove || _state.isThinking) return;
+    if (!_game.whiteToMove || _state.isThinking) return;
 
-    final piece = _boardState.board[row][col];
+    final piece = _game.board[row][col];
 
     // If we have a piece selected
     if (_state.selectedRow != null && _state.selectedCol != null) {
@@ -327,9 +294,9 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   void _onMove(int fromRow, int fromCol, int toRow, int toCol) {
     debugPrint('UI Move: From($fromRow, $fromCol) To($toRow, $toCol)');
 
-    if (!_boardState.whiteToMove || _state.isThinking) {
+    if (!_game.whiteToMove || _state.isThinking) {
       debugPrint(
-          'Move blocked: whiteToMove=${_boardState.whiteToMove}, isThinking=${_state.isThinking}');
+          'Move blocked: whiteToMove=${_game.whiteToMove}, isThinking=${_state.isThinking}');
       return;
     }
 
@@ -345,15 +312,14 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
       return;
     }
 
-    final uciMove = _boardState.squareToAlgebraic(fromRow, fromCol) +
-        _boardState.squareToAlgebraic(toRow, toCol);
+    final uciMove = _game.squareToAlgebraic(fromRow, fromCol) +
+        _game.squareToAlgebraic(toRow, toCol);
 
     bool isLegal = _game.makeMove(uciMove);
 
     if (isLegal) {
       setState(() {
-        _boardState.updateFromFen(_game.currentFEN);
-        _state = _state.copyWith(
+                _state = _state.copyWith(
           lastMove: 'You: $uciMove',
           hintMove: null,
         );
@@ -402,18 +368,6 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
     _engineController.requestMove(_game.positionCommand, settings);
   }
 
-  void _checkGameOver() {
-    if (_game.isGameOver) {
-      setState(() {
-        _state = _state.copyWith(
-          isThinking: false,
-          statusMessage: 'Game Over: ${_game.gameOverReason}',
-        );
-      });
-      _showGameOverDialog();
-    }
-  }
-
   void _getHint() {
     if (_stockfish.state.value != StockfishState.ready) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -422,7 +376,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
       return;
     }
 
-    if (!_boardState.whiteToMove || _state.isThinking) return;
+    if (!_game.whiteToMove || _state.isThinking) return;
 
     setState(() {
       _state = _state.copyWith(
@@ -445,15 +399,8 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
     }
 
     setState(() {
-      // Remove last two moves (player and Stockfish)
       _game.undoMove();
       _game.undoMove();
-
-      // Reset board and replay all moves
-      _boardState.reset();
-      for (var move in _game.moveHistory) {
-        _replayMove(move);
-      }
       _state = _state.copyWith(
         statusMessage: 'Your turn (White)',
         hintMove: null,
@@ -501,24 +448,14 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
     }
   }
 
-  void _replayMove(String uciMove) {
-    if (uciMove.length < 4) return;
 
-    final fromFile = uciMove[0].codeUnitAt(0) - 'a'.codeUnitAt(0);
-    final fromRank = 8 - int.parse(uciMove[1]);
-    final toFile = uciMove[2].codeUnitAt(0) - 'a'.codeUnitAt(0);
-    final toRank = 8 - int.parse(uciMove[3]);
-
-    _boardState.makeMove(fromRank, fromFile, toRank, toFile);
-  }
 
   void _newGame() {
     _evalNotifier.value = null;
     _depthNotifier.value = 0;
     setState(() {
       _game.reset();
-      _boardState.reset();
-      _state = _state.copyWith(
+            _state = _state.copyWith(
         statusMessage: 'Your turn (White)',
         isThinking: false,
         hintMove: null,
@@ -560,6 +497,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
     _evalDebounce?.cancel();
     _evalNotifier.dispose();
     _depthNotifier.dispose();
+    _game.dispose();
     _stockfish.state.removeListener(_onStockfishStateChange);
     _stockfish.dispose();
     super.dispose();
@@ -591,38 +529,50 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
           // Collapsible analysis panel
           _buildAnalysisPanel(),
 
-          // Chess board
+          // Chess board (rebuilds only when ChessGame notifies)
           Expanded(
-            child: Center(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  // Calculate the size for a square board
-                  final size = constraints.maxHeight < constraints.maxWidth
-                      ? constraints.maxHeight
-                      : constraints.maxWidth;
+            child: ListenableBuilder(
+              listenable: _game,
+              builder: (context, _) {
+                return Center(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      // Calculate the size for a square board
+                      final size = constraints.maxHeight < constraints.maxWidth
+                          ? constraints.maxHeight
+                          : constraints.maxWidth;
 
-                  return SizedBox(
-                    width: size,
-                    height: size,
-                    child: ChessBoard(
-                      boardState: _boardState,
-                      onMove: _onMove,
-                      onSquareTap: _onSquareTap,
-                      selectedRow: _state.selectedRow,
-                      selectedCol: _state.selectedCol,
-                      validMoves: _state.validMoves,
-                      hintMove: _state.hintMove,
-                      isCheck: _game.inCheck,
-                      animateMoves: _state.animateMoves,
-                    ),
-                  );
-                },
-              ),
+                      return SizedBox(
+                        width: size,
+                        height: size,
+                        child: ChessBoard(
+                          board: _game.board,
+                          whiteToMove: _game.whiteToMove,
+                          squareToAlgebraic: _game.squareToAlgebraic,
+                          onMove: _onMove,
+                          onSquareTap: _onSquareTap,
+                          selectedRow: _state.selectedRow,
+                          selectedCol: _state.selectedCol,
+                          validMoves: _state.validMoves,
+                          hintMove: _state.hintMove,
+                          isCheck: _game.inCheck,
+                          animateMoves: _state.animateMoves,
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
             ),
           ),
 
-          // Compact move history
-          _buildMoveHistory(),
+          // Compact move history (rebuilds only when ChessGame notifies)
+          ListenableBuilder(
+            listenable: _game,
+            builder: (context, _) {
+              return _buildMoveHistory();
+            },
+          ),
 
           // Control buttons
           _buildControlButtons(),
@@ -1017,7 +967,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
           _buildCompactButton(
             icon: Icons.lightbulb_outline,
             label: 'Hint',
-            onPressed: (!_boardState.whiteToMove || _state.isThinking)
+            onPressed: (!_game.whiteToMove || _state.isThinking)
                 ? null
                 : _getHint,
           ),

@@ -1,19 +1,20 @@
 import 'package:chess/chess.dart' as chess;
+import 'package:flutter/foundation.dart';
 import 'move_analyzer.dart';
 
-class ChessGame {
+class ChessGame with ChangeNotifier {
   final chess.Chess _game = chess.Chess();
-  final MoveAnalyzer _analyzer;
+  late final MoveAnalyzer _analyzer;
   final List<MoveAnnotation> _annotations = [];
-  
+
   List<String>? _cachedLegalMoves;
 
   double? _lastEvaluation;
-  String? _lastBestMove;
   int? _lastDepth;
-  
-  // Initialize with a separate Chess instance for the analyzer
-  ChessGame() : _analyzer = MoveAnalyzer(chess.Chess());
+
+  ChessGame() {
+    _analyzer = MoveAnalyzer(_game);
+  }
   
   bool get inCheck => _game.in_check;
   String get currentFEN => _game.fen;
@@ -42,7 +43,6 @@ class ChessGame {
   /// Update evaluation from Stockfish
   void updateEvaluation(double evaluation, String bestMove, int depth) {
     _lastEvaluation = evaluation;
-    _lastBestMove = bestMove;
     _lastDepth = depth;
     
     // If we have a pending annotation without complete evaluation, update it
@@ -79,9 +79,7 @@ class ChessGame {
   
   if (success) {
     _cachedLegalMoves = null;
-    // Sync the analyzer's game state
-    _analyzer.syncMove(from, to, promotion);
-    
+
     // Create INCOMPLETE annotation with temporary evaluation
     final tempEval = MoveEvaluation(
       scoreBefore: evalBefore,
@@ -98,8 +96,9 @@ class ChessGame {
     );
     
     _annotations.add(annotation);
+    notifyListeners();
   }
-  
+
   return success;
 }
 
@@ -147,19 +146,18 @@ void _completeLastAnnotation(double evalAfter, String bestMove, int depth) {
   void undoMove() {
     _cachedLegalMoves = null;
     _game.undo();
-    _analyzer.syncUndo();
     if (_annotations.isNotEmpty) {
       _annotations.removeLast();
     }
+    notifyListeners();
   }
   
   void reset() {
     _cachedLegalMoves = null;
     _game.reset();
-    _analyzer.syncReset();
     _annotations.clear();
     _lastEvaluation = null;
-    _lastBestMove = null;
     _lastDepth = null;
+    notifyListeners();
   }
 }

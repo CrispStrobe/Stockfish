@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import '../chess/board_state.dart';
+import '../chess/chess_game.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class ChessBoard extends StatefulWidget {
-  final BoardState boardState;
+  final List<List<ChessPiece?>> board;
+  final bool whiteToMove;
+  final String Function(int row, int col) squareToAlgebraic;
   final Function(int fromRow, int fromCol, int toRow, int toCol)? onMove;
   final Function(int row, int col)? onSquareTap;
   final int? selectedRow;
@@ -15,7 +17,9 @@ class ChessBoard extends StatefulWidget {
 
   const ChessBoard({
     Key? key,
-    required this.boardState,
+    required this.board,
+    required this.whiteToMove,
+    required this.squareToAlgebraic,
     this.onMove,
     this.onSquareTap,
     this.selectedRow,
@@ -30,7 +34,8 @@ class ChessBoard extends StatefulWidget {
   State<ChessBoard> createState() => _ChessBoardState();
 }
 
-class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateMixin {
+class _ChessBoardState extends State<ChessBoard>
+    with SingleTickerProviderStateMixin {
   AnimationController? _animationController;
   Animation<Offset>? _animation;
   String? _animatingMove;
@@ -64,7 +69,7 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
       curve: Curves.easeInOut,
     ));
 
-    _animatingMove = '${fromRow}_${fromCol}';
+    _animatingMove = '${fromRow}_$fromCol';
     _animationController!.forward(from: 0).then((_) {
       if (mounted) {
         setState(() {
@@ -104,25 +109,33 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
               return Expanded(
                 child: Row(
                   children: List.generate(8, (col) {
-                    final piece = widget.boardState.board[row][col];
-                    final squareName = widget.boardState.squareToAlgebraic(row, col);
+                    final piece = widget.board[row][col];
+                    final squareName =
+                        widget.squareToAlgebraic(row, col);
                     final isLight = (row + col) % 2 == 0;
-                    final isSelected = widget.selectedRow == row && widget.selectedCol == col;
-                    final isValidTarget = validTargets.contains(squareName);
+                    final isSelected = widget.selectedRow == row &&
+                        widget.selectedCol == col;
+                    final isValidTarget =
+                        validTargets.contains(squareName);
                     final isHintFrom = squareName == hintFrom;
                     final isHintTo = squareName == hintTo;
 
                     bool isKingInDanger = false;
-                    if (widget.isCheck && piece != null && piece.type == PieceType.king) {
-                      if (widget.boardState.whiteToMove && piece.color == PieceColor.white) {
+                    if (widget.isCheck &&
+                        piece != null &&
+                        piece.type == PieceType.king) {
+                      if (widget.whiteToMove &&
+                          piece.color == PieceColor.white) {
                         isKingInDanger = true;
                       }
-                      if (!widget.boardState.whiteToMove && piece.color == PieceColor.black) {
+                      if (!widget.whiteToMove &&
+                          piece.color == PieceColor.black) {
                         isKingInDanger = true;
                       }
                     }
 
-                    final isAnimating = _animatingMove == '${row}_$col';
+                    final isAnimating =
+                        _animatingMove == '${row}_$col';
 
                     return _ChessSquare(
                       row: row,
@@ -167,7 +180,8 @@ class _ChessSquare extends StatelessWidget {
   final Animation<Offset>? animation;
   final Function(int row, int col)? onSquareTap;
   final Function(int fromRow, int fromCol, int toRow, int toCol)? onMove;
-  final void Function(int fromRow, int fromCol, int toRow, int toCol) animateMove;
+  final void Function(int fromRow, int fromCol, int toRow, int toCol)
+      animateMove;
 
   const _ChessSquare({
     required this.row,
@@ -195,25 +209,27 @@ class _ChessSquare extends StatelessWidget {
       child: GestureDetector(
         onTap: () => onSquareTap?.call(row, col),
         child: DragTarget<Map<String, int>>(
-          onWillAccept: (data) => true,
-          onAccept: (data) {
+          onWillAcceptWithDetails: (details) => true,
+          onAcceptWithDetails: (details) {
             if (onMove != null) {
-              animateMove(data['row']!, data['col']!, row, col);
-              onMove!(data['row']!, data['col']!, row, col);
+              animateMove(
+                  details.data['row']!, details.data['col']!, row, col);
+              onMove!(
+                  details.data['row']!, details.data['col']!, row, col);
             }
           },
           builder: (context, candidateData, rejectedData) {
             Color? bgColor;
             if (isKingInDanger) {
-              bgColor = Colors.red.withOpacity(0.7);
+              bgColor = Colors.red.withValues(alpha: 0.7);
             } else if (isSelected) {
-              bgColor = Colors.blue.withOpacity(0.5);
+              bgColor = Colors.blue.withValues(alpha: 0.5);
             } else if (isValidTarget) {
               bgColor = isLight
-                  ? Colors.green.withOpacity(0.3)
-                  : Colors.green.withOpacity(0.4);
+                  ? Colors.green.withValues(alpha: 0.3)
+                  : Colors.green.withValues(alpha: 0.4);
             } else if (isHintSquare) {
-              bgColor = Colors.yellow.withOpacity(0.5);
+              bgColor = Colors.yellow.withValues(alpha: 0.5);
             } else {
               bgColor = isLight ? Colors.brown[200] : Colors.brown[400];
             }
@@ -229,32 +245,29 @@ class _ChessSquare extends StatelessWidget {
               ),
               child: Stack(
                 children: [
-                  // Square label
                   if (piece == null)
                     Center(
                       child: Text(
                         squareName,
                         style: TextStyle(
                           fontSize: 8,
-                          color: isLight ? Colors.brown[400] : Colors.brown[200],
+                          color: isLight
+                              ? Colors.brown[400]
+                              : Colors.brown[200],
                         ),
                       ),
                     ),
-
-                  // Valid move indicator
                   if (isValidTarget && piece == null)
                     Center(
                       child: Container(
                         width: 12,
                         height: 12,
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.6),
+                          color: Colors.green.withValues(alpha: 0.6),
                           shape: BoxShape.circle,
                         ),
                       ),
                     ),
-
-                  // Piece
                   if (piece != null)
                     isAnimating && animation != null
                         ? AnimatedBuilder(
@@ -276,7 +289,8 @@ class _ChessSquare extends StatelessWidget {
                           )
                         : Draggable<Map<String, int>>(
                             data: {'row': row, 'col': col},
-                            feedback: _PieceWidget(piece: piece!, size: 60),
+                            feedback:
+                                _PieceWidget(piece: piece!, size: 60),
                             childWhenDragging: Container(),
                             child: _PieceWidget(piece: piece!),
                           ),
@@ -312,12 +326,18 @@ class _PieceWidget extends StatelessWidget {
 
     String typeSuffix = '';
     switch (piece.type) {
-      case PieceType.pawn:   typeSuffix = 'P'; break;
-      case PieceType.knight: typeSuffix = 'N'; break;
-      case PieceType.bishop: typeSuffix = 'B'; break;
-      case PieceType.rook:   typeSuffix = 'R'; break;
-      case PieceType.queen:  typeSuffix = 'Q'; break;
-      case PieceType.king:   typeSuffix = 'K'; break;
+      case PieceType.pawn:
+        typeSuffix = 'P';
+      case PieceType.knight:
+        typeSuffix = 'N';
+      case PieceType.bishop:
+        typeSuffix = 'B';
+      case PieceType.rook:
+        typeSuffix = 'R';
+      case PieceType.queen:
+        typeSuffix = 'Q';
+      case PieceType.king:
+        typeSuffix = 'K';
     }
 
     return 'assets/pieces/$colorPrefix$typeSuffix.svg';

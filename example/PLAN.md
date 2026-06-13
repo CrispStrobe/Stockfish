@@ -162,15 +162,15 @@
 
 ## Progress Tracking
 
-- [ ] 1. Eliminate dual board state
-- [ ] 4. Engine lifecycle hardening
-- [ ] 8. Remove dead code
-- [ ] 9. Fix deprecation warnings
-- [ ] 10. Plugin-level fixes
-- [ ] 2. Debounce evaluation updates
-- [ ] 3. Consolidate state variables
-- [ ] 5. Cache legal moves
-- [ ] 6. ChessBoard widget optimization
-- [ ] 7. Move analyzer to isolate
-- [ ] 11. State management (ChangeNotifier)
-- [ ] 12. Separate engine service layer
+- [x] 1. Eliminate dual board state
+- [x] 4. Engine lifecycle hardening
+- [x] 8. Remove dead code
+- [x] 9. Fix deprecation warnings
+- [x] 10. Plugin-level fixes
+- [x] 2. Debounce evaluation updates
+- [x] 3. Consolidate state variables
+- [x] 5. Cache legal moves
+- [x] 6. ChessBoard widget optimization
+- [x] 7. Move analyzer to isolate
+- [x] 11. State management (ChangeNotifier)
+- [x] 12. Separate engine service layer

@@ -95,19 +95,43 @@ class TacticalPattern {
   });
 }
 
+/// Serializable request for isolate-based move analysis.
+class AnalysisRequest {
+  final String fen;
+  final String uciMove;
+  final MoveEvaluation evaluation;
+
+  AnalysisRequest({
+    required this.fen,
+    required this.uciMove,
+    required this.evaluation,
+  });
+}
+
+/// Top-level function suitable for use with `compute()`.
+/// Creates a fresh MoveAnalyzer from a FEN string and analyzes the move.
+MoveAnnotation analyzeInIsolate(AnalysisRequest request) {
+  final game = chess.Chess.fromFEN(request.fen);
+  final analyzer = MoveAnalyzer(game);
+  return analyzer.analyzeMove(
+    uciMove: request.uciMove,
+    evaluation: request.evaluation,
+  );
+}
+
 class MoveAnalyzer {
   chess.Chess game;
-  
+
   // Reverse lookup: integer index -> algebraic notation
   late final Map<int, String> _indexToSquare;
-  
+
   MoveAnalyzer(this.game) {
     _indexToSquare = {};
     for (var entry in chess.Chess.SQUARES.entries) {
       _indexToSquare[entry.value] = entry.key;
     }
   }
-  
+
   /// Convert integer square index to algebraic notation
   String? _squareFromIndex(int index) {
     return _indexToSquare[index];
