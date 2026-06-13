@@ -63,12 +63,12 @@ class HorizontalEvaluationBar extends StatelessWidget {
             ),
             
             // Center line marker
-            Positioned(
-              left: MediaQuery.of(context).size.width * 0.5 - 1,
-              top: 0,
-              bottom: 0,
-              width: 2,
-              child: Container(color: Colors.grey[600]),
+            Align(
+              alignment: Alignment.center,
+              child: Container(
+                width: 2,
+                color: Colors.grey[600],
+              ),
             ),
             
             // Evaluation text

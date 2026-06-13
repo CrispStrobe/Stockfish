@@ -59,3 +59,11 @@
 ## [1.7.2] - 4 December 2025
 
 * Added support for 16 KB memory page sizes
+
+## [1.8.0] - 2 February 2026
+
+* Update to Stockfish 18
+
+## [1.8.1] - 3 February 2026
+
+* Fix Stockfish 18 release

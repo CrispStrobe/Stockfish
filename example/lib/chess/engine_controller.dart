@@ -116,10 +116,16 @@ class EngineController {
   
   /// Request move with strength settings applied
   void requestMove(String positionCommand, StrengthSettings settings) {
+    stockfish.stdin = 'isready';
     stockfish.stdin = positionCommand;
     stockfish.stdin = 'go depth ${settings.searchDepth}';
   }
-  
+
+  /// Send stop command to abort current search
+  void stop() {
+    stockfish.stdin = 'stop';
+  }
+
   /// Request analysis at full strength
   void requestAnalysis(String positionCommand, int depth) {
     // Temporarily disable strength limits for analysis
@@ -129,7 +135,8 @@ class EngineController {
     if (capabilities.supportsUciElo && capabilities.supportsUciLimitStrength) {
       stockfish.stdin = 'setoption name UCI_LimitStrength value false';
     }
-    
+
+    stockfish.stdin = 'isready';
     stockfish.stdin = positionCommand;
     stockfish.stdin = 'go depth $depth';
   }

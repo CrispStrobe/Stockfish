@@ -56,10 +56,6 @@ class ChessGame {
   
   /// Make a move and create initial annotation
   bool makeMove(String uciMove) {
-  print('--- MAKING MOVE: $uciMove ---');
-  print('Current turn: ${_game.turn == chess.Color.WHITE ? "White" : "Black"}');
-  print('Evaluation before move: $_lastEvaluation');
-  
   if (uciMove.length < 4) return false;
   
   final from = uciMove.substring(0, 2);
@@ -78,8 +74,6 @@ class ChessGame {
   });
   
   if (success) {
-    print('✅ Move successful');
-    
     // Sync the analyzer's game state
     _analyzer.syncMove(from, to, promotion);
     
@@ -99,9 +93,6 @@ class ChessGame {
     );
     
     _annotations.add(annotation);
-    print('📝 Created incomplete annotation (will complete when eval arrives)');
-  } else {
-    print('❌ Move failed');
   }
   
   return success;
@@ -131,8 +122,6 @@ void _completeLastAnnotation(double evalAfter, String bestMove, int depth) {
   );
   
   _annotations[_annotations.length - 1] = completeAnnotation;
-  
-  print('✅ Completed annotation for ${incomplete.move}: ${completeEval.quality} (change: ${completeEval.evaluationChange.toStringAsFixed(2)})');
 }
   
   bool get isGameOver => _game.game_over;

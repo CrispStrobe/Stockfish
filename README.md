@@ -103,7 +103,7 @@ Update `dependencies` section inside `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  stockfish: ^1.7.0
+  stockfish: ^1.8.1
 ```
 
 ### Init engine

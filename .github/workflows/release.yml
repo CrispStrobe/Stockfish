@@ -1,0 +1,155 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Android Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.x'
+          cache: true
+
+      - name: Build release APK
+        run: flutter build apk --release
+        working-directory: example
+
+      - name: Build App Bundle
+        run: flutter build appbundle --release
+        working-directory: example
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-release
+          path: |
+            example/build/app/outputs/flutter-apk/app-release.apk
+            example/build/app/outputs/bundle/release/app-release.aab
+
+  build-ios:
+    name: iOS Release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.x'
+          cache: true
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: example/ios/Pods
+          key: ios-pods-${{ hashFiles('example/ios/Podfile.lock') }}
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --no-codesign --release
+        working-directory: example
+
+  build-macos:
+    name: macOS Release
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.x'
+          cache: true
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: example/macos/Pods
+          key: macos-pods-${{ hashFiles('example/macos/Podfile.lock') }}
+
+      - name: Build macOS
+        run: flutter build macos --release
+        working-directory: example
+
+      - name: Create DMG
+        run: |
+          APP_PATH="example/build/macos/Build/Products/Release/stockfish_example.app"
+          if [ -d "$APP_PATH" ]; then
+            hdiutil create -volname CrispChess -srcfolder "$APP_PATH" -ov -format UDZO CrispChess-macos.dmg
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: |
+            CrispChess-macos.dmg
+            example/build/macos/Build/Products/Release/*.app
+
+  build-linux:
+    name: Linux Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.32.x'
+          cache: true
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev
+
+      - name: Build Linux
+        run: flutter build linux --release
+        working-directory: example
+
+      - name: Package binary
+        run: |
+          cd example/build/linux/x64/release/bundle
+          tar czf $GITHUB_WORKSPACE/CrispChess-linux-x64.tar.gz .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: CrispChess-linux-x64.tar.gz
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-android, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/android-release/app-release.apk
+            artifacts/android-release/app-release.aab
+            artifacts/macos-release/CrispChess-macos.dmg
+            artifacts/linux-release/CrispChess-linux-x64.tar.gz

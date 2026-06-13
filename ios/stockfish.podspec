@@ -36,12 +36,19 @@ Pod::Spec.new do |s|
     {
       :execution_position => :before_compile,
       :name => 'Download nnue',
-      :script => "cd \"$PODS_TARGET_SRCROOT/../src/stockfish\" && [ -e 'nn-1111cefa1111.nnue' ] || curl --location --remote-name 'https://tests.stockfishchess.org/api/nn/nn-1111cefa1111.nnue'"
+      :script => "cd \"$PODS_TARGET_SRCROOT/../src/stockfish\" && [ -e 'nn-c288c895ea92.nnue' ] || curl --location --remote-name 'https://tests.stockfishchess.org/api/nn/nn-c288c895ea92.nnue'"
+    },
+    {
+      :execution_position => :before_compile,
+      :name => 'Download small nnue',
+      :script => "cd \"$PODS_TARGET_SRCROOT/../src/stockfish\" && [ -e 'nn-37f18f62d772.nnue' ] || curl --location --remote-name 'https://tests.stockfishchess.org/api/nn/nn-37f18f62d772.nnue'"
     }
   ]
 
   # Your high-performance compiler flags
   s.xcconfig = {
+    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
+    'CLANG_CXX_LIBRARY' => 'libc++',
     'OTHER_CPLUSPLUSFLAGS[config=Debug]' => '$(inherited) -std=c++17 -DUSE_PTHREADS -DIS_64BIT -DUSE_POPCNT',
     'OTHER_CPLUSPLUSFLAGS[config=Release]' => '$(inherited) -fno-exceptions -std=c++17 -DUSE_PTHREADS -DNDEBUG -O3 -DIS_64BIT -DUSE_POPCNT -DUSE_NEON=8 -flto=full',
     'OTHER_LDFLAGS[config=Release]' => '$(inherited) -flto=full'

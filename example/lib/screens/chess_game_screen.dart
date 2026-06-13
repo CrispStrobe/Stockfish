@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../chess/chess_game.dart';
 import '../chess/board_state.dart';
@@ -19,7 +20,12 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   late ChessGame _game;
   late BoardState _boardState;
   late Stockfish _stockfish;
-  late EngineController _engineController; 
+  late EngineController _engineController;
+
+  // Pre-compiled regex patterns for parsing engine output
+  static final _cpRegex = RegExp(r'score cp (-?\d+)');
+  static final _depthRegex = RegExp(r'depth (\d+)');
+  static final _pvRegex = RegExp(r'pv (\S+)');
 
   int _strengthLevel = 10;  // 0-20 scale
   int _hintDepth = 15;
@@ -36,11 +42,13 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   String _lastMove = '';
   bool _waitingForHint = false;
 
-  double? _currentEvaluation; // in centipawns
-  int _searchDepth = 0;
-  String? _bestLine;
+  // Evaluation state managed via ValueNotifier to avoid full rebuilds
+  final ValueNotifier<double?> _evalNotifier = ValueNotifier<double?>(null);
+  final ValueNotifier<int> _depthNotifier = ValueNotifier<int>(0);
   String? _currentBestMove;
-  int _analysisDepth = 0;
+
+  // Debounce timer for evaluation updates
+  Timer? _evalDebounce;
 
   @override
   void initState() {
@@ -74,25 +82,24 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
       
       debugPrint('📊 Stockfish: $trimmedLine');
       
-      // Parse evaluation info
+      // Parse evaluation info using pre-compiled regex
       if (trimmedLine.startsWith('info') && trimmedLine.contains('depth')) {
-        final cpMatch = RegExp(r'score cp (-?\d+)').firstMatch(trimmedLine);
-        final depthMatch = RegExp(r'depth (\d+)').firstMatch(trimmedLine);
-        final pvMatch = RegExp(r'pv (\S+)').firstMatch(trimmedLine);
-        
+        final cpMatch = _cpRegex.firstMatch(trimmedLine);
+        final depthMatch = _depthRegex.firstMatch(trimmedLine);
+        final pvMatch = _pvRegex.firstMatch(trimmedLine);
+
         if (cpMatch != null && depthMatch != null) {
           final cp = int.parse(cpMatch.group(1)!);
           final depth = int.parse(depthMatch.group(1)!);
           final bestMove = pvMatch?.group(1) ?? '';
-          
-          setState(() {
-            _currentEvaluation = cp / 100.0;
-            _analysisDepth = depth;
-            if (bestMove.isNotEmpty) _currentBestMove = bestMove;
-          });
-          
+
+          // Update ValueNotifiers (no setState needed for eval bar)
+          _evalNotifier.value = cp / 100.0;
+          _depthNotifier.value = depth;
+          if (bestMove.isNotEmpty) _currentBestMove = bestMove;
+
           if (bestMove.isNotEmpty) {
-            _game.updateEvaluation(_currentEvaluation!, bestMove, depth);
+            _game.updateEvaluation(_evalNotifier.value!, bestMove, depth);
           }
         }
       }
@@ -115,32 +122,29 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
 
     void _onStockfishStateChange() async {
     final currentState = _stockfish.state.value;
-    debugPrint('🔄 Stockfish state changed to: $currentState');
-    
+
     if (currentState == StockfishState.ready) {
-      debugPrint('✅ Stockfish is ready, detecting capabilities...');
-      
       try {
-        // Detect what the engine supports
         await _engineController.detectCapabilities();
-        
-        // Apply initial strength settings
+
         final settings = StrengthSettings.fromLevel(_strengthLevel);
         _engineController.applyStrength(settings);
-        
-        // Ready to play
+
         _stockfish.stdin = 'isready';
-        
-        setState(() {
-          _statusMessage = 'Your turn (White)';
-        });
+
+        if (mounted) {
+          setState(() {
+            _statusMessage = 'Your turn (White)';
+          });
+        }
       } catch (e) {
-        debugPrint('❌ Error initializing engine: $e');
-        setState(() {
-          _statusMessage = 'Engine error - please restart';
-        });
+        if (mounted) {
+          setState(() {
+            _statusMessage = 'Engine error - please restart';
+          });
+        }
       }
-      
+
       _stockfish.state.removeListener(_onStockfishStateChange);
     } else if (currentState == StockfishState.error) {
       debugPrint('❌ Stockfish failed to initialize!');
@@ -409,7 +413,12 @@ void _tryReinitializeStockfish() {
   }
 
   void _undoMove() {
-    if (_game.moveHistory.length < 2 || _isThinking) return;
+    if (_game.moveHistory.length < 2) return;
+    // Stop engine if it's currently thinking
+    if (_isThinking) {
+      _engineController.stop();
+      _isThinking = false;
+    }
 
     setState(() {
       // Remove last two moves (player and Stockfish)
@@ -477,6 +486,9 @@ String _getStockfishStatusText() {
   }
 
   void _newGame() {
+    _evalNotifier.value = null;
+    _depthNotifier.value = 0;
+    _currentBestMove = null;
     setState(() {
       _game.reset();
       _boardState.reset();
@@ -514,7 +526,9 @@ String _getStockfishStatusText() {
 
   @override
 void dispose() {
-  debugPrint('🔴 Disposing ChessGameScreen');
+  _evalDebounce?.cancel();
+  _evalNotifier.dispose();
+  _depthNotifier.dispose();
   _stockfish.state.removeListener(_onStockfishStateChange);
   _stockfish.dispose();
   super.dispose();
@@ -675,10 +689,9 @@ bool _analysisExpanded = false;
 
 Widget _buildAnalysisPanel() {
   // Always show if we have evaluation data
-  final hasEvaluation = _currentEvaluation != null;
   final hasAnnotations = _game.annotations.isNotEmpty;
-  
-  if (!hasEvaluation && !hasAnnotations) return const SizedBox.shrink();
+
+  if (_evalNotifier.value == null && !hasAnnotations) return const SizedBox.shrink();
   
   // Get last two annotations (player and Stockfish)
   final annotations = _game.annotations;
@@ -716,23 +729,29 @@ Widget _buildAnalysisPanel() {
                 const Spacer(),
                 
                 // Show current evaluation in header when collapsed
-                if (!_analysisExpanded && hasEvaluation)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: _currentEvaluation! >= 0 ? Colors.blue.shade100 : Colors.orange.shade100,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: Text(
-                      _currentEvaluation! >= 0 
-                          ? '+${_currentEvaluation!.toStringAsFixed(1)}'
-                          : _currentEvaluation!.toStringAsFixed(1),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: _currentEvaluation! >= 0 ? Colors.blue.shade700 : Colors.orange.shade700,
-                      ),
-                    ),
+                if (!_analysisExpanded)
+                  ValueListenableBuilder<double?>(
+                    valueListenable: _evalNotifier,
+                    builder: (context, eval, _) {
+                      if (eval == null) return const SizedBox.shrink();
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: eval >= 0 ? Colors.blue.shade100 : Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                        child: Text(
+                          eval >= 0
+                              ? '+${eval.toStringAsFixed(1)}'
+                              : eval.toStringAsFixed(1),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: eval >= 0 ? Colors.blue.shade700 : Colors.orange.shade700,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   
                 const SizedBox(width: 8),
@@ -747,15 +766,24 @@ Widget _buildAnalysisPanel() {
         
         // Expandable content
         if (_analysisExpanded) ...[
-          // Horizontal evaluation bar
-          if (hasEvaluation)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: HorizontalEvaluationBar(
-                evaluation: _currentEvaluation,
-                depth: _analysisDepth,
-              ),
+          // Horizontal evaluation bar (isolated rebuild via ValueListenableBuilder)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: ValueListenableBuilder<double?>(
+              valueListenable: _evalNotifier,
+              builder: (context, eval, _) {
+                return ValueListenableBuilder<int>(
+                  valueListenable: _depthNotifier,
+                  builder: (context, depth, _) {
+                    return HorizontalEvaluationBar(
+                      evaluation: eval,
+                      depth: depth,
+                    );
+                  },
+                );
+              },
             ),
+          ),
           
           // Two-column move analysis
           if (hasAnnotations)
