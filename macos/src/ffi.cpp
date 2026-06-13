@@ -6,7 +6,10 @@
 #include <dirent.h>
 
 #ifdef __APPLE__
+#include <TargetConditionals.h>
+#if !TARGET_OS_IOS
 #include <libproc.h>
+#endif
 #include <mach-o/dyld.h>
 #elif defined(__linux__)
 #include <linux/limits.h>
@@ -44,7 +47,11 @@ FFI_EXPORT int stockfish_init()
     pipe(pipes[PARENT_WRITE_PIPE]);
 
 #ifdef __APPLE__
-    // Get executable path and change to Resources directory for NNUE files
+#if TARGET_OS_IOS
+    // iOS: NNUE files are expected in the app bundle
+    // The working directory is set by the Flutter engine
+#else
+    // macOS: Get executable path and change to Resources directory for NNUE files
     char exec_path[1024];
     uint32_t size = sizeof(exec_path);
 
@@ -59,6 +66,7 @@ FFI_EXPORT int stockfish_init()
             chdir(resources_path);
         }
     }
+#endif
 #elif defined(__linux__)
     // On Linux, NNUE files are expected next to the executable or in cwd
     char exec_path[PATH_MAX];
