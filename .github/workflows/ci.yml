@@ -92,6 +92,11 @@ jobs:
           path: example/ios/Pods
           key: ios-pods-${{ hashFiles('example/ios/Podfile.lock') }}
 
+      - name: Copy engine source for CocoaPods
+        run: |
+          rm -f ios/src
+          cp -r macos/src ios/src
+
       - name: Build iOS (no codesign)
         run: flutter build ios --no-codesign --release
         working-directory: example
