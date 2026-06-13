@@ -112,20 +112,7 @@ class MoveAnalyzer {
   String? _squareFromIndex(int index) {
     return _indexToSquare[index];
   }
-  
-  /// Sync the internal game state
-  void syncMove(String from, String to, String? promotion) {
-    game.move({'from': from, 'to': to, 'promotion': promotion});
-  }
-  
-  void syncUndo() {
-    game.undo();
-  }
-  
-  void syncReset() {
-    game.reset();
-  }
-  
+
   /// Analyze a move with evaluation data from Stockfish
   MoveAnnotation analyzeMove({
     required String uciMove,

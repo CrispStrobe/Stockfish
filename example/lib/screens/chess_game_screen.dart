@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../chess/chess_game.dart';
-import '../chess/board_state.dart';
 import '../widgets/chess_board.dart';
 import 'settings_screen.dart';
 import 'package:stockfish/stockfish.dart';
@@ -18,7 +17,6 @@ class ChessGameScreen extends StatefulWidget {
 
 class _ChessGameScreenState extends State<ChessGameScreen> {
   late ChessGame _game;
-  late BoardState _boardState;
   late Stockfish _stockfish;
   late EngineController _engineController;
 
@@ -54,34 +52,33 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   void initState() {
     super.initState();
     _game = ChessGame();
-    _boardState = BoardState();
     _stockfish = Stockfish();
     _engineController = EngineController(_stockfish);
     _initializeStockfish();
   }
 
   List<String> _getValidMovesForSquare(int row, int col) {
-    final square = _boardState.squareToAlgebraic(row, col);
-    final piece = _boardState.board[row][col];
-    
+    final square = _game.squareToAlgebraic(row, col);
+    final piece = _game.board[row][col];
+
     if (piece == null || piece.color != PieceColor.white) return [];
-    
+
     // Get all legal moves from the game
     final allMoves = _game.getLegalMoves();
-    
+
     // Filter to moves starting from this square
     return allMoves.where((move) => move.startsWith(square)).toList();
     }
 
   void _initializeStockfish() {
     _stockfish.state.addListener(_onStockfishStateChange);
-    
+
     _stockfish.stdout.listen((line) {
       final trimmedLine = line.trim();
       if (trimmedLine.isEmpty) return;
-      
-      debugPrint('📊 Stockfish: $trimmedLine');
-      
+
+      debugPrint('Stockfish: $trimmedLine');
+
       // Parse evaluation info using pre-compiled regex
       if (trimmedLine.startsWith('info') && trimmedLine.contains('depth')) {
         final cpMatch = _cpRegex.firstMatch(trimmedLine);
@@ -103,12 +100,12 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
           }
         }
       }
-      
+
       if (trimmedLine.startsWith('bestmove')) {
         final parts = trimmedLine.split(' ');
         if (parts.length >= 2 && parts[1] != '(none)') {
           final move = parts[1];
-          
+
           if (_waitingForHint) {
             _handleHintResponse(move);
           } else if (_isThinking) {
@@ -118,7 +115,7 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
       }
     });
   }
-  
+
 
     void _onStockfishStateChange() async {
     final currentState = _stockfish.state.value;
@@ -147,13 +144,13 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
 
       _stockfish.state.removeListener(_onStockfishStateChange);
     } else if (currentState == StockfishState.error) {
-      debugPrint('❌ Stockfish failed to initialize!');
-      
+      debugPrint('Stockfish failed to initialize!');
+
       setState(() {
         _statusMessage = 'Chess engine failed to start';
         _isThinking = false;
       });
-      
+
       WidgetsBinding.instance.addPostFrameCallback((_) {
         showDialog(
           context: context,
@@ -183,12 +180,12 @@ class _ChessGameScreenState extends State<ChessGameScreen> {
   }
 
 void _tryReinitializeStockfish() {
-  debugPrint('🔄 Attempting to reinitialize Stockfish...');
-  
+  debugPrint('Attempting to reinitialize Stockfish...');
+
   try {
     // Dispose old instance
     _stockfish.dispose();
-    
+
     // Create new instance
     setState(() {
       _stockfish = Stockfish();
@@ -196,7 +193,7 @@ void _tryReinitializeStockfish() {
       _statusMessage = 'Restarting engine...';
     });
   } catch (e) {
-    debugPrint('❌ Failed to reinitialize: $e');
+    debugPrint('Failed to reinitialize: $e');
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Failed to restart engine: $e'),
@@ -206,7 +203,7 @@ void _tryReinitializeStockfish() {
   }
 }
 
-   
+
     void _handleHintResponse(String uciMove) {
         if (!mounted) return;
 
@@ -216,7 +213,7 @@ void _tryReinitializeStockfish() {
             _hintMove = uciMove;     // This triggers the yellow highlight in ChessBoard
             _statusMessage = 'Hint: $uciMove';
         });
-        
+
         // DO NOT request any further analysis after a hint - that was causing auto-execution
         }
 
@@ -224,8 +221,7 @@ void _tryReinitializeStockfish() {
     // 1. Validate and Logic Move
     if (_game.makeMove(uciMove)) {
       setState(() {
-        // 2. Update Visual Board
-        _boardState.updateFromFen(_game.currentFEN);
+        // 2. Update state
         _lastMove = 'You (Hint): $uciMove';
         _hintMove = null; // Clear highlight
 
@@ -243,7 +239,7 @@ void _tryReinitializeStockfish() {
     }
   }
 
-    
+
 
     void _showGameOverDialog() {
         showDialog(
@@ -254,8 +250,8 @@ void _tryReinitializeStockfish() {
             return AlertDialog(
                 title: Text(_game.gameOverReason),
                 content: Text(
-                winner != null 
-                    ? '$winner wins the game!' 
+                winner != null
+                    ? '$winner wins the game!'
                     : 'The game ended in a draw.',
                 ),
                 actions: [
@@ -275,27 +271,26 @@ void _tryReinitializeStockfish() {
   void _makeStockfishMove(String uciMove) {
     if (_game.makeMove(uciMove)) {
         setState(() {
-        _boardState.updateFromFen(_game.currentFEN); 
         _lastMove = 'Stockfish: $uciMove';
         _statusMessage = _game.isGameOver ? 'Game Over!' : 'Your turn (White)';
         _isThinking = false;
         });
-        
+
         // DO NOT automatically request analysis here
         // Analysis will happen naturally when the player makes their next move
     }
     }
 
   void _onSquareTap(int row, int col) {
-    if (!_boardState.whiteToMove || _isThinking) return;
-    
-    final piece = _boardState.board[row][col];
-    
+    if (!_game.whiteToMove || _isThinking) return;
+
+    final piece = _game.board[row][col];
+
     // If we have a piece selected
     if (_selectedRow != null && _selectedCol != null) {
         // Try to move to this square
         _onMove(_selectedRow!, _selectedCol!, row, col);
-        
+
         // Clear selection
         setState(() {
         _selectedRow = null;
@@ -316,14 +311,14 @@ void _tryReinitializeStockfish() {
 
   void _onMove(int fromRow, int fromCol, int toRow, int toCol) {
     debugPrint('UI Move: From($fromRow, $fromCol) To($toRow, $toCol)');
-    
-    if (!_boardState.whiteToMove || _isThinking) {
-        debugPrint('Move blocked: whiteToMove=${_boardState.whiteToMove}, isThinking=$_isThinking');
+
+    if (!_game.whiteToMove || _isThinking) {
+        debugPrint('Move blocked: whiteToMove=${_game.whiteToMove}, isThinking=$_isThinking');
         return;
     }
-    
+
     if (_stockfish.state.value != StockfishState.ready) {
-        debugPrint('⚠️ Stockfish is not ready: ${_stockfish.state.value}');
+        debugPrint('Stockfish is not ready: ${_stockfish.state.value}');
         ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('Chess engine is not ready. Please wait or restart the app.'),
@@ -332,18 +327,17 @@ void _tryReinitializeStockfish() {
         );
         return;
     }
-    
-    final uciMove = _boardState.squareToAlgebraic(fromRow, fromCol) +
-                    _boardState.squareToAlgebraic(toRow, toCol);
+
+    final uciMove = _game.squareToAlgebraic(fromRow, fromCol) +
+                    _game.squareToAlgebraic(toRow, toCol);
 
     bool isLegal = _game.makeMove(uciMove);
 
     if (isLegal) {
         setState(() {
-        _boardState.updateFromFen(_game.currentFEN);
         _lastMove = 'You: $uciMove';
         _hintMove = null;
-        
+
         if (_game.isGameOver) {
             _isThinking = false;
             _statusMessage = 'Game Over: ${_game.gameOverReason}';
@@ -351,7 +345,7 @@ void _tryReinitializeStockfish() {
         } else {
             _statusMessage = "Stockfish is thinking...";
             _isThinking = true;
-            
+
             // Request Stockfish to make its move
             _requestStockfishMove();
         }
@@ -369,14 +363,14 @@ void _tryReinitializeStockfish() {
 
   void _requestStockfishMove() {
     if (_stockfish.state.value != StockfishState.ready) {
-      debugPrint('❌ Cannot request move - Stockfish not ready');
+      debugPrint('Cannot request move - Stockfish not ready');
       setState(() {
         _isThinking = false;
         _statusMessage = 'Engine error - your turn';
       });
       return;
     }
-    
+
     final settings = StrengthSettings.fromLevel(_strengthLevel);
     _engineController.applyStrength(settings);
     _engineController.requestMove(_game.positionCommand, settings);
@@ -399,8 +393,8 @@ void _tryReinitializeStockfish() {
       );
       return;
     }
-    
-    if (!_boardState.whiteToMove || _isThinking) return;
+
+    if (!_game.whiteToMove || _isThinking) return;
 
     setState(() {
       _waitingForHint = true;
@@ -424,12 +418,7 @@ void _tryReinitializeStockfish() {
       // Remove last two moves (player and Stockfish)
       _game.undoMove();
       _game.undoMove();
-      
-      // Reset board and replay all moves
-      _boardState.reset();
-      for (var move in _game.moveHistory) {
-        _replayMove(move);
-      }
+
       _statusMessage = 'Your turn (White)';
       _hintMove = null;
     });
@@ -474,24 +463,12 @@ String _getStockfishStatusText() {
   }
 }
 
-  void _replayMove(String uciMove) {
-    if (uciMove.length < 4) return;
-    
-    final fromFile = uciMove[0].codeUnitAt(0) - 'a'.codeUnitAt(0);
-    final fromRank = 8 - int.parse(uciMove[1]);
-    final toFile = uciMove[2].codeUnitAt(0) - 'a'.codeUnitAt(0);
-    final toRank = 8 - int.parse(uciMove[3]);
-
-    _boardState.makeMove(fromRank, fromFile, toRank, toFile);
-  }
-
   void _newGame() {
     _evalNotifier.value = null;
     _depthNotifier.value = 0;
     _currentBestMove = null;
     setState(() {
       _game.reset();
-      _boardState.reset();
       _statusMessage = 'Your turn (White)';
       _isThinking = false;
       _hintMove = null;
@@ -517,7 +494,7 @@ String _getStockfishStatusText() {
         _showValidMoves = result['showValidMoves']! as bool;
         _animateMoves = result['animateMoves']! as bool;
         });
-        
+
         // Apply new strength settings
         final settings = StrengthSettings.fromLevel(_strengthLevel);
         _engineController.applyStrength(settings);
@@ -536,7 +513,7 @@ void dispose() {
 
 @override
 void reassemble() {
-  debugPrint('♻️ Hot reload detected - reassembling');
+  debugPrint('Hot reload detected - reassembling');
   super.reassemble();
   // Don't reinitialize Stockfish on hot reload, just continue
 }
@@ -557,10 +534,10 @@ Widget build(BuildContext context) {
       children: [
         // Compact status header
         _buildCompactHeader(),
-        
+
         // Collapsible analysis panel
         _buildAnalysisPanel(),
-        
+
         // Chess board
         Expanded(
         child: Center(
@@ -570,13 +547,15 @@ Widget build(BuildContext context) {
                 final size = constraints.maxHeight < constraints.maxWidth
                     ? constraints.maxHeight
                     : constraints.maxWidth;
-                
+
                 return SizedBox(
                 width: size,
                 height: size,
-                child: 
+                child:
                   ChessBoard(
-                    boardState: _boardState,
+                    board: _game.board,
+                    whiteToMove: _game.whiteToMove,
+                    squareToAlgebraic: _game.squareToAlgebraic,
                     onMove: _onMove,
                     onSquareTap: _onSquareTap,
                     selectedRow: _selectedRow,
@@ -619,7 +598,7 @@ Widget _buildCompactHeader() {
           color: _isThinking ? Colors.orange : Colors.green,
         ),
         const SizedBox(width: 8),
-        
+
         // Status text
         Expanded(
           child: Column(
@@ -644,7 +623,7 @@ Widget _buildCompactHeader() {
             ],
           ),
         ),
-        
+
         // Engine status indicator
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -668,7 +647,7 @@ Widget _buildCompactHeader() {
             ],
           ),
         ),
-        
+
         // Loading spinner
         if (_isThinking)
           const Padding(
@@ -692,12 +671,12 @@ Widget _buildAnalysisPanel() {
   final hasAnnotations = _game.annotations.isNotEmpty;
 
   if (_evalNotifier.value == null && !hasAnnotations) return const SizedBox.shrink();
-  
+
   // Get last two annotations (player and Stockfish)
   final annotations = _game.annotations;
   final playerAnnotation = annotations.length >= 2 ? annotations[annotations.length - 2] : null;
   final stockfishAnnotation = annotations.isNotEmpty ? annotations.last : null;
-  
+
   return Container(
     decoration: BoxDecoration(
       color: Colors.grey.shade50,
@@ -727,7 +706,7 @@ Widget _buildAnalysisPanel() {
                   ),
                 ),
                 const Spacer(),
-                
+
                 // Show current evaluation in header when collapsed
                 if (!_analysisExpanded)
                   ValueListenableBuilder<double?>(
@@ -753,7 +732,7 @@ Widget _buildAnalysisPanel() {
                       );
                     },
                   ),
-                  
+
                 const SizedBox(width: 8),
                 Icon(
                   _analysisExpanded ? Icons.expand_less : Icons.expand_more,
@@ -763,7 +742,7 @@ Widget _buildAnalysisPanel() {
             ),
           ),
         ),
-        
+
         // Expandable content
         if (_analysisExpanded) ...[
           // Horizontal evaluation bar (isolated rebuild via ValueListenableBuilder)
@@ -784,7 +763,7 @@ Widget _buildAnalysisPanel() {
               },
             ),
           ),
-          
+
           // Two-column move analysis
           if (hasAnnotations)
             Padding(
@@ -830,9 +809,9 @@ Widget _buildAnalysisPanel() {
                         ),
                       ),
                     ),
-                  
+
                   const SizedBox(width: 8),
-                  
+
                   // Stockfish move (right column)
                   if (stockfishAnnotation != null)
                     Expanded(
@@ -905,7 +884,7 @@ Widget _buildMoveHistory() {
               final blackMove = index * 2 + 1 < _game.moveHistory.length
                   ? _game.moveHistory[index * 2 + 1]
                   : null;
-              
+
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6),
                 child: Row(
@@ -964,7 +943,7 @@ Widget _buildControlButtons() {
         _buildCompactButton(
           icon: Icons.lightbulb_outline,
           label: 'Hint',
-          onPressed: (!_boardState.whiteToMove || _isThinking) ? null : _getHint,
+          onPressed: (!_game.whiteToMove || _isThinking) ? null : _getHint,
         ),
       ],
     ),

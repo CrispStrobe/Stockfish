@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import '../chess/board_state.dart';
+import '../chess/chess_game.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class ChessBoard extends StatefulWidget {
-  final BoardState boardState;
+  final List<List<ChessPiece?>> board;
+  final bool whiteToMove;
+  final String Function(int, int) squareToAlgebraic;
   final Function(int fromRow, int fromCol, int toRow, int toCol)? onMove;
   final Function(int row, int col)? onSquareTap;
   final int? selectedRow;
@@ -12,10 +14,12 @@ class ChessBoard extends StatefulWidget {
   final String? hintMove;
   final bool isCheck;
   final bool animateMoves;
-  
+
   const ChessBoard({
     Key? key,
-    required this.boardState,
+    required this.board,
+    required this.whiteToMove,
+    required this.squareToAlgebraic,
     this.onMove,
     this.onSquareTap,
     this.selectedRow,
@@ -25,7 +29,7 @@ class ChessBoard extends StatefulWidget {
     this.isCheck = false,
     this.animateMoves = true,
   }) : super(key: key);
-  
+
   @override
   State<ChessBoard> createState() => _ChessBoardState();
 }
@@ -34,7 +38,7 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
   AnimationController? _animationController;
   Animation<Offset>? _animation;
   String? _animatingMove;
-  
+
   @override
   void initState() {
     super.initState();
@@ -43,19 +47,19 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
       vsync: this,
     );
   }
-  
+
   @override
   void dispose() {
     _animationController?.dispose();
     super.dispose();
   }
-  
+
   void _animateMove(int fromRow, int fromCol, int toRow, int toCol) {
     if (!widget.animateMoves) return;
-    
+
     final dx = (toCol - fromCol).toDouble();
     final dy = (toRow - fromRow).toDouble();
-    
+
     _animation = Tween<Offset>(
       begin: Offset.zero,
       end: Offset(dx, dy),
@@ -63,7 +67,7 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
       parent: _animationController!,
       curve: Curves.easeInOut,
     ));
-    
+
     _animatingMove = '${fromRow}_${fromCol}';
     _animationController!.forward(from: 0).then((_) {
       if (mounted) {
@@ -73,7 +77,7 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
       }
     });
   }
-  
+
   @override
   Widget build(BuildContext context) {
     return AspectRatio(
@@ -96,22 +100,22 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
       ),
     );
   }
-  
+
   Widget _buildSquare(int row, int col) {
     final isLight = (row + col) % 2 == 0;
-    final piece = widget.boardState.board[row][col];
-    final square = widget.boardState.squareToAlgebraic(row, col);
-    
+    final piece = widget.board[row][col];
+    final square = widget.squareToAlgebraic(row, col);
+
     // Check if selected
     final isSelected = widget.selectedRow == row && widget.selectedCol == col;
-    
+
     // Check if valid move target
     final isValidTarget = widget.validMoves.any((move) {
       if (move.length < 4) return false;
       final targetSquare = move.substring(2, 4);
       return targetSquare == square;
     });
-    
+
     // Check if hint square
     bool isHintSquare = false;
     if (widget.hintMove != null && widget.hintMove!.length >= 4) {
@@ -123,17 +127,17 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
     // Check if king in danger
     bool isKingInDanger = false;
     if (widget.isCheck && piece != null && piece.type == PieceType.king) {
-      if (widget.boardState.whiteToMove && piece.color == PieceColor.white) {
+      if (widget.whiteToMove && piece.color == PieceColor.white) {
         isKingInDanger = true;
       }
-      if (!widget.boardState.whiteToMove && piece.color == PieceColor.black) {
+      if (!widget.whiteToMove && piece.color == PieceColor.black) {
         isKingInDanger = true;
       }
     }
-    
+
     // Check if animating
     final isAnimating = _animatingMove == '${row}_$col';
-    
+
     return Expanded(
       child: GestureDetector(
         onTap: () => widget.onSquareTap?.call(row, col),
@@ -152,15 +156,15 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
             } else if (isSelected) {
               bgColor = Colors.blue.withOpacity(0.5);
             } else if (isValidTarget) {
-              bgColor = isLight 
-                ? Colors.green.withOpacity(0.3) 
+              bgColor = isLight
+                ? Colors.green.withOpacity(0.3)
                 : Colors.green.withOpacity(0.4);
             } else if (isHintSquare) {
               bgColor = Colors.yellow.withOpacity(0.5);
             } else {
               bgColor = isLight ? Colors.brown[200] : Colors.brown[400];
             }
-            
+
             return Container(
               decoration: BoxDecoration(
                 color: bgColor,
@@ -183,7 +187,7 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
                         ),
                       ),
                     ),
-                  
+
                   // Valid move indicator
                   if (isValidTarget && piece == null)
                     Center(
@@ -196,7 +200,7 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
                         ),
                       ),
                     ),
-                  
+
                   // Piece
                   if (piece != null)
                     isAnimating && _animation != null
@@ -232,9 +236,9 @@ class _ChessBoardState extends State<ChessBoard> with SingleTickerProviderStateM
 class _PieceWidget extends StatelessWidget {
   final ChessPiece piece;
   final double? size;
-  
+
   const _PieceWidget({required this.piece, this.size});
-  
+
   @override
   Widget build(BuildContext context) {
     return Center(
@@ -245,10 +249,10 @@ class _PieceWidget extends StatelessWidget {
       ),
     );
   }
-  
+
   String _getPieceAsset(ChessPiece piece) {
     final colorPrefix = piece.color == PieceColor.white ? 'w' : 'b';
-    
+
     String typeSuffix = '';
     switch (piece.type) {
       case PieceType.pawn:   typeSuffix = 'P'; break;
@@ -258,7 +262,7 @@ class _PieceWidget extends StatelessWidget {
       case PieceType.queen:  typeSuffix = 'Q'; break;
       case PieceType.king:   typeSuffix = 'K'; break;
     }
-    
+
     return 'assets/pieces/$colorPrefix$typeSuffix.svg';
   }
 }
