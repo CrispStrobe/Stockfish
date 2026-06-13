@@ -27,7 +27,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.x'
+          channel: stable
           cache: true
 
       - name: Build release APK
@@ -54,7 +54,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.x'
+          channel: stable
           cache: true
 
       - name: Cache CocoaPods
@@ -75,7 +75,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.x'
+          channel: stable
           cache: true
 
       - name: Cache CocoaPods
@@ -111,7 +111,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.x'
+          channel: stable
           cache: true
 
       - name: Install Linux build dependencies
