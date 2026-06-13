@@ -2,12 +2,36 @@ import 'package:chess/chess.dart' as chess;
 import 'package:flutter/foundation.dart';
 import 'move_analyzer.dart';
 
+enum PieceType { pawn, knight, bishop, rook, queen, king }
+enum PieceColor { white, black }
+
+class ChessPiece {
+  final PieceType type;
+  final PieceColor color;
+
+  ChessPiece(this.type, this.color);
+
+  String get symbol {
+    final symbols = {
+      PieceType.pawn: 'p',
+      PieceType.knight: 'n',
+      PieceType.bishop: 'b',
+      PieceType.rook: 'r',
+      PieceType.queen: 'q',
+      PieceType.king: 'k',
+    };
+    final s = symbols[type]!;
+    return color == PieceColor.white ? s.toUpperCase() : s;
+  }
+}
+
 class ChessGame with ChangeNotifier {
   final chess.Chess _game = chess.Chess();
   late final MoveAnalyzer _analyzer;
   final List<MoveAnnotation> _annotations = [];
 
   List<String>? _cachedLegalMoves;
+  List<List<ChessPiece?>>? _cachedBoard;
 
   double? _lastEvaluation;
   int? _lastDepth;
@@ -15,9 +39,55 @@ class ChessGame with ChangeNotifier {
   ChessGame() {
     _analyzer = MoveAnalyzer(_game);
   }
-  
+
   bool get inCheck => _game.in_check;
   String get currentFEN => _game.fen;
+  bool get whiteToMove => _game.turn == chess.Color.WHITE;
+
+  String squareToAlgebraic(int row, int col) {
+    return '${String.fromCharCode(97 + col)}${8 - row}';
+  }
+
+  /// Get the 8x8 board parsed from the current FEN. Cached and invalidated on move/undo/reset.
+  List<List<ChessPiece?>> get board {
+    if (_cachedBoard != null) return _cachedBoard!;
+    _cachedBoard = _parseBoardFromFen(_game.fen);
+    return _cachedBoard!;
+  }
+
+  List<List<ChessPiece?>> _parseBoardFromFen(String fen) {
+    final result = List.generate(8, (_) => List<ChessPiece?>.filled(8, null));
+    final parts = fen.split(' ');
+    final rows = parts[0].split('/');
+
+    for (int r = 0; r < 8; r++) {
+      int c = 0;
+      for (var char in rows[r].split('')) {
+        int? emptySquares = int.tryParse(char);
+        if (emptySquares != null) {
+          c += emptySquares;
+        } else {
+          final color = char == char.toUpperCase() ? PieceColor.white : PieceColor.black;
+          final type = _charToType(char.toLowerCase());
+          result[r][c] = ChessPiece(type, color);
+          c++;
+        }
+      }
+    }
+    return result;
+  }
+
+  static PieceType _charToType(String char) {
+    switch (char) {
+      case 'p': return PieceType.pawn;
+      case 'n': return PieceType.knight;
+      case 'b': return PieceType.bishop;
+      case 'r': return PieceType.rook;
+      case 'q': return PieceType.queen;
+      case 'k': return PieceType.king;
+      default: return PieceType.pawn;
+    }
+  }
   
   List<String> get moveHistory => _game.history
       .map((m) => '${m.move.fromAlgebraic}${m.move.toAlgebraic}${m.move.promotion?.name ?? ""}')
@@ -79,6 +149,7 @@ class ChessGame with ChangeNotifier {
   
   if (success) {
     _cachedLegalMoves = null;
+    _cachedBoard = null;
 
     // Create INCOMPLETE annotation with temporary evaluation
     final tempEval = MoveEvaluation(
@@ -145,6 +216,7 @@ void _completeLastAnnotation(double evalAfter, String bestMove, int depth) {
   
   void undoMove() {
     _cachedLegalMoves = null;
+    _cachedBoard = null;
     _game.undo();
     if (_annotations.isNotEmpty) {
       _annotations.removeLast();
@@ -154,6 +226,7 @@ void _completeLastAnnotation(double evalAfter, String bestMove, int depth) {
   
   void reset() {
     _cachedLegalMoves = null;
+    _cachedBoard = null;
     _game.reset();
     _annotations.clear();
     _lastEvaluation = null;

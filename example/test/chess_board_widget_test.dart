@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:stockfish_example/chess/board_state.dart';
+import 'package:stockfish_example/chess/chess_game.dart';
 import 'package:stockfish_example/widgets/chess_board.dart';
 
 void main() {
   testWidgets('ChessBoard renders 64 squares', (tester) async {
-    final boardState = BoardState();
+    final game = ChessGame();
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: ChessBoard(
-          boardState: boardState,
+          board: game.board,
+          whiteToMove: game.whiteToMove,
+          squareToAlgebraic: game.squareToAlgebraic,
         ),
       ),
     ));

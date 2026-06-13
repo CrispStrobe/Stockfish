@@ -105,5 +105,73 @@ void main() {
       expect(updated.hintMove, isNull);
       expect(updated.currentBestMove, isNull);
     });
+
+    test('copyWith with no arguments returns equivalent state', () {
+      final state = const GameState(
+        strengthLevel: 5,
+        hintDepth: 20,
+        showValidMoves: false,
+        animateMoves: false,
+        selectedRow: 3,
+        selectedCol: 4,
+        validMoves: ['e2e4'],
+        statusMessage: 'Test',
+        isThinking: true,
+        hintMove: 'e2e4',
+        lastMove: 'You: e2e4',
+        waitingForHint: true,
+        analysisExpanded: true,
+        currentBestMove: 'd7d5',
+      );
+
+      final copy = state.copyWith();
+
+      expect(copy.strengthLevel, state.strengthLevel);
+      expect(copy.hintDepth, state.hintDepth);
+      expect(copy.showValidMoves, state.showValidMoves);
+      expect(copy.animateMoves, state.animateMoves);
+      expect(copy.selectedRow, state.selectedRow);
+      expect(copy.selectedCol, state.selectedCol);
+      expect(copy.validMoves, state.validMoves);
+      expect(copy.statusMessage, state.statusMessage);
+      expect(copy.isThinking, state.isThinking);
+      expect(copy.hintMove, state.hintMove);
+      expect(copy.lastMove, state.lastMove);
+      expect(copy.waitingForHint, state.waitingForHint);
+      expect(copy.analysisExpanded, state.analysisExpanded);
+      expect(copy.currentBestMove, state.currentBestMove);
+    });
+
+    test('multiple copyWith chains work correctly', () {
+      const state = GameState();
+
+      final result = state
+          .copyWith(strengthLevel: 5)
+          .copyWith(hintDepth: 25)
+          .copyWith(isThinking: true)
+          .copyWith(statusMessage: 'Chained');
+
+      expect(result.strengthLevel, 5);
+      expect(result.hintDepth, 25);
+      expect(result.isThinking, true);
+      expect(result.statusMessage, 'Chained');
+      // Defaults should be preserved
+      expect(result.showValidMoves, true);
+      expect(result.animateMoves, true);
+      expect(result.lastMove, '');
+    });
+
+    test('GameState equality by field comparison', () {
+      const state1 = GameState(strengthLevel: 5, hintDepth: 20);
+      const state2 = GameState(strengthLevel: 5, hintDepth: 20);
+      const state3 = GameState(strengthLevel: 10, hintDepth: 20);
+
+      // Same field values
+      expect(state1.strengthLevel, state2.strengthLevel);
+      expect(state1.hintDepth, state2.hintDepth);
+
+      // Different field values
+      expect(state1.strengthLevel, isNot(state3.strengthLevel));
+    });
   });
 }
